@@ -1,0 +1,9 @@
+# Only the shared files are tracked here; every game and CPU core has its own repository.
+/*
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/PORTING_PLAN.md
+!/AmiAgent/
+!/Warp*.pdf
+*.cfg
