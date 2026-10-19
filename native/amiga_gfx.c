@@ -57,6 +57,7 @@
 #include <proto/cybergraphics.h>
 
 #include "amiga_gfx.h"
+#include "amiga_copy.h"
 
 /* Declared extern by <proto/cybergraphics.h>; ours to define and to fill. */
 struct Library *CyberGfxBase;
@@ -1924,10 +1925,15 @@ static int rtg_blit_locked(int x, int y, int w, int h)
 	tags[3].ti_Tag = LBMI_PIXFMT;      tags[3].ti_Data = (ULONG)&pixfmt;
 	tags[4].ti_Tag = TAG_DONE;         tags[4].ti_Data = 0;
 
+	/* The copy below may use MOVE16, which reads memory past the data
+	 * cache: push the source rectangle now - an OS call, so before the
+	 * lock. The destination is display memory, which is not cached. */
+	amiga_copy_push(g_chunky + (ULONG)y * g_width + x, g_width, w, h);
+
 	handle = LockBitMapTagList((APTR)g_screen->RastPort.BitMap, tags);
 	if (handle == NULL) return 0;
 
-	/* ---- LOCK HELD: memcpy only, no OS calls, no early return ---- */
+	/* ---- LOCK HELD: the row copy only, no OS calls, no early return ---- */
 	usable = (base != NULL && depth == 8UL && pixfmt == PIXFMT_LUT8 &&
 	          bpr >= (ULONG)(x + w));
 	if (usable) {
@@ -1937,12 +1943,9 @@ static int rtg_blit_locked(int x, int y, int w, int h)
 		 * else. bpr is the card's pitch and is NOT g_width - it is whatever
 		 * this lock reported, re-read every time, never cached. */
 		UBYTE *dst = (UBYTE *)base + (ULONG)(y + g_yoff) * bpr + x;
-		int row;
-		for (row = 0; row < h; row++) {
-			memcpy(dst, src, (size_t)w);
-			src += g_width;
-			dst += bpr;
-		}
+		/* Rows by MOVE16 where they line up (68040/060), memcpy otherwise:
+		 * a full 640x400 frame 8.2 -> 5.0 ms on a Warp 060 (amiga_copy.c). */
+		amiga_copy_rows_pushed(dst, (long)bpr, src, g_width, w, h);
 	}
 	UnLockBitMap(handle);
 	/* ---- LOCK RELEASED ---- */

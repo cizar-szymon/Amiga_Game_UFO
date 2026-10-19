@@ -19,6 +19,7 @@
 #include "SDL.h"
 #include "sdlmini.h"
 #include "amiga_gfx.h"
+#include "amiga_copy.h"
 #include "amiga_watchdog.h"
 
 static SDL_Surface *s_screen;
@@ -114,6 +115,11 @@ struct private_hwdata {
 	Uint16 *runs;     /* per row: count n, then n * (offset, length) */
 };
 
+/* unchanged-frame skip, defined with the dirty rectangles further down */
+static void skip_forget(SDL_Surface *s);
+static void skip_reading(SDL_Surface *s);
+static void skip_invalidate(void);
+
 static void spans_free(SDL_Surface *s)
 {
 	if (s->hwdata != NULL) {
@@ -124,11 +130,13 @@ static void spans_free(SDL_Surface *s)
 	}
 }
 
-/* Every write path calls this: content changed, classification is stale. */
+/* Every write path calls this: content changed, classification is stale -
+ * and, for the unchanged-frame skip, the content has a new generation. */
 static void surf_touch(SDL_Surface *s)
 {
 	s->unused1 = 0;
 	if (s->hwdata != NULL) spans_free(s);
+	SDLmini_Written(s);
 }
 
 /* One pass over the pixels: classify, and build the span cache on the fly.
@@ -205,6 +213,7 @@ static SDL_Surface *new_surface(int w, int h, int bpp, int pitch,
 	s->clip_rect.y = 0;
 	s->clip_rect.w = (Uint16)w;
 	s->clip_rect.h = (Uint16)h;
+	s->amgen = ++SDLmini_Gen;
 
 	if (pixels != NULL) {
 		s->pixels = pixels;
@@ -242,6 +251,7 @@ void SDL_FreeSurface(SDL_Surface *surface)
 	if (surface == NULL) return;
 	if (surface == s_screen) return;            /* owned by SDLmini_VideoQuit */
 	if (--surface->refcount > 0) return;
+	skip_forget(surface);                       /* queued blits must not read freed pixels */
 	spans_free(surface);
 	if (!(surface->flags & SDL_PREALLOC)) free(surface->pixels);
 	free_format(surface->format);
@@ -253,6 +263,7 @@ SDL_Surface *SDL_ConvertSurface(SDL_Surface *src, SDL_PixelFormat *fmt, Uint32 f
 	SDL_Surface *dst;
 
 	if (src == NULL) return NULL;
+	skip_reading(src);   /* the copy below reads the pixels directly */
 	if (fmt->BitsPerPixel != src->format->BitsPerPixel) {
 		SDL_SetError("SDLmini: conversion between depths is not supported (%d -> %d)",
 		             src->format->BitsPerPixel, fmt->BitsPerPixel);
@@ -432,6 +443,7 @@ void SDLmini_SplashFinish(void)
 		              s_screen->format->palette->ncolors);
 		dirty_add(0, 0, s_screen->w, s_screen->h);
 	}
+	skip_invalidate();   /* the splash was drawn straight into the screen */
 }
 
 int SDL_SetPalette(SDL_Surface *surface, int flags, SDL_Color *colors, int firstcolor, int ncolors)
@@ -529,7 +541,387 @@ static void dirty_add(int x, int y, int w, int h)
 
 static void dirty_add_lock(SDL_Surface *s)
 {
-	if (s == s_screen) dirty_add(0, 0, s->w, s->h);
+	if (s == s_screen) { dirty_add(0, 0, s->w, s->h); skip_invalidate(); }
+}
+
+/* --------------------------------------------- unchanged-frame skip ------
+ * The game rebuilds its whole back buffer every frame - Game::run clears it
+ * and every state blits all of its surfaces again - and Screen::flip then
+ * diff-copies it onto the screen. When nothing moves (the Geoscape at rest,
+ * a menu, the battlescape between two animation phases) all of that makes the
+ * same picture again. Measured on a Warp 060 at 640x400, Geoscape at rest:
+ * clear 4.3 ms, globe and its layers 11.8 ms, the rest of the state ~18 ms,
+ * flip 7-9 ms - every frame, for a picture that did not change.
+ *
+ * So fills and blits onto the back buffer are not done when asked for: each
+ * is queued as (source surface, its content generation, rectangles, colour
+ * key or fill colour). When Screen::flip reads the back buffer, the queue is
+ * compared with the previous frame's. The same list means the same picture,
+ * which the back buffer and the screen already hold: the queue, the diff-copy
+ * and the flip work are all skipped. Otherwise the queue runs in order and
+ * everything goes on as before.
+ *
+ * That is exact only if every write to the pixels of every surface gives it a
+ * new generation (SDLmini_Written: the SDL calls and lock/unlock here, and in
+ * the game's Surface code setPixel, the draw methods and the direct-write
+ * fast paths). Whatever cannot be compared - a write to the back buffer that
+ * is not a queued fill or blit, a write to a surface whose blit is still
+ * queued, a read of the back buffer, a full queue - runs the queue at once and
+ * marks the frame "forced": it is drawn normally and is not the reference for
+ * the next one.
+ *
+ * Options::amigaFrameSkip: 0 off, 1 on, 2 verify - a frame judged unchanged is
+ * drawn anyway, and a checksum of the back buffer before and after says
+ * whether the judgement was right ("fskip: VERIFY MISMATCH" when it was not). */
+int SDLmini_FrameSkip = 1;
+Uint32 SDLmini_Gen = 0;
+Uint32 SDLmini_QueueSerial = 1;
+
+typedef struct {
+	SDL_Surface *src;   /* NULL = fill */
+	Uint32 gen;         /* src->amgen when queued */
+	Uint32 key;         /* bit 31 + colour key of a keyed blit; fill colour */
+	SDL_Rect sr, dr;    /* already clipped */
+} SkipOp;
+
+#define SKIP_QMAX 512
+static SkipOp s_q[SKIP_QMAX], s_qprev[SKIP_QMAX];
+static int s_qn;               /* queued this frame */
+static int s_qprevn = -1;      /* the reference frame's count; -1 = there is none */
+static int s_qforced;          /* this frame cannot be compared */
+static int s_qflushing;
+static SDL_Surface *s_back;    /* the game's back buffer, recognised at the flip */
+static unsigned long s_perf_fskip, s_perf_fverr;
+
+static int SDL_FillRect_(SDL_Surface *dst, SDL_Rect *dstrect, Uint32 color);
+static void blit8(SDL_Surface *src, const SDL_Rect *srcrect,
+                  SDL_Surface *dst, const SDL_Rect *dstrect);
+
+/* Fill + same-rectangle blit, elided. Every frame starts with Screen::clear
+ * (fill with 0) followed at once by a blit of a full-screen surface - the
+ * battlescape Map, the Geoscape background - whose colour key is 0 too. The
+ * transparent pixels would show the fill's 0, which is exactly what a plain
+ * copy of those pixels gives: so the fill is dropped and the blit done as a
+ * plain copy. One full pass over the frame less (a 640x400 fill is ~4 ms on a
+ * Warp 060), and no per-pixel key tests. Only when the blit's rectangle is
+ * the fill's exactly, so no pixel of the fill survives anywhere else. */
+static int s_blit_plain;   /* blit8: treat the source as having no colour key */
+static int s_noelide;      /* verify mode: build the reference frame without it */
+
+static int fill_elided_by_next(int i)
+{
+	const SkipOp *f = &s_q[i], *b;
+	if (s_noelide || f->src != NULL || i + 1 >= s_qn) return 0;
+	b = &s_q[i + 1];
+	if (b->src == NULL || b->src == s_back) return 0;
+	if (b->dr.x != f->dr.x || b->dr.y != f->dr.y || b->dr.w != f->dr.w || b->dr.h != f->dr.h) return 0;
+	return b->key == 0 || b->key == (0x80000000UL | (f->key & 0xff));
+}
+
+static void skip_run(void)
+{
+	int i;
+	s_qflushing = 1;
+	for (i = 0; i < s_qn; i++) {
+		SkipOp *o = &s_q[i];
+		if (o->src == NULL) {
+			if (fill_elided_by_next(i)) {
+				SkipOp *b = &s_q[++i];
+				s_blit_plain = 1;
+				blit8(b->src, &b->sr, s_back, &b->dr);
+				s_blit_plain = 0;
+			} else {
+				SDL_FillRect_(s_back, &o->dr, o->key);
+			}
+		}
+		else blit8(o->src, &o->sr, s_back, &o->dr);
+	}
+	s_qn = 0;
+	s_qflushing = 0;
+}
+
+void SDLmini_FlushQueue(void)
+{
+	if (s_qflushing) return;
+	s_qforced = 1;
+	if (s_qn > 0) skip_run();
+}
+
+static int skip_queueing(SDL_Surface *dst)
+{
+	return dst == s_back && s_back != NULL && SDLmini_FrameSkip != 0 && !s_qflushing;
+}
+
+static void skip_push(SDL_Surface *src, Uint32 key, const SDL_Rect *sr, const SDL_Rect *dr)
+{
+	SkipOp *o;
+	if (s_qn == SKIP_QMAX) SDLmini_FlushQueue();   /* full: run it, frame not comparable */
+	o = &s_q[s_qn++];
+	memset(o, 0, sizeof(*o));                      /* the lists are compared with memcmp */
+	o->src = src;
+	o->key = key;
+	o->dr  = *dr;
+	if (src != NULL) {
+		o->gen = src->amgen;
+		o->sr  = *sr;
+		src->amqueued = SDLmini_QueueSerial;
+	}
+}
+
+/* Something is about to read a surface's pixels outside the queue. */
+static void skip_reading(SDL_Surface *s)
+{
+	if (s == s_back) SDLmini_FlushQueue();
+}
+
+/* A surface is going away. */
+static void skip_forget(SDL_Surface *s)
+{
+	if (s->amqueued == SDLmini_QueueSerial) SDLmini_FlushQueue();
+	if (s == s_back) { s_back = NULL; s_qprevn = -1; }
+}
+
+/* The screen was written behind the diff-copy's back (splash, a lock, a fill):
+ * the next frame must be drawn and diff-copied in full. */
+static void skip_invalidate(void)
+{
+	s_qprevn = -1;
+}
+
+static void skip_next_frame(void)
+{
+	SDLmini_QueueSerial++;
+	s_qforced = 0;
+	if (s_back != NULL) s_back->amqueued = SDLmini_QueueSerial;   /* direct writes to it flush */
+}
+
+/* ---- partial frames: only the rectangles whose content changed ------------
+ * A frame whose list has the same SHAPE as the last one - same sources, keys,
+ * colours and rectangles, in the same order - but in which some sources have
+ * new content (the Geoscape clock, a blinking marker layer) differs from the
+ * last picture only inside the destination rectangles of those operations.
+ * Everything outside them is already right in the back buffer and on the
+ * screen. So the whole list runs again, in order, clipped to each changed
+ * rectangle, and only those rectangles are copied to the screen. Measured
+ * before this: on the Geoscape with time running the clock changes almost
+ * every frame, only 2-13% of the frames were unchanged, and composing the
+ * whole 640x400 screen cost ~45 of the ~60 ms of a frame on a Warp 060. */
+#define SKIP_RMAX 8
+static SDL_Rect s_dmg[SKIP_RMAX];
+static int s_dmgn;
+static Uint8 *s_verify;                /* verify mode: the partial result */
+static size_t s_verifysz;
+static unsigned long s_perf_fpart, s_perf_fpartpx;
+
+static int ops_same_shape(const SkipOp *a, const SkipOp *b)
+{
+	return a->src == b->src && a->key == b->key &&
+	       a->sr.x == b->sr.x && a->sr.y == b->sr.y && a->sr.w == b->sr.w && a->sr.h == b->sr.h &&
+	       a->dr.x == b->dr.x && a->dr.y == b->dr.y && a->dr.w == b->dr.w && a->dr.h == b->dr.h;
+}
+
+static int rects_touch(const SDL_Rect *a, const SDL_Rect *b)
+{
+	return a->x <= b->x + b->w && b->x <= a->x + a->w && a->y <= b->y + b->h && b->y <= a->y + a->h;
+}
+
+static void rect_union(SDL_Rect *a, const SDL_Rect *b)
+{
+	int x0 = a->x < b->x ? a->x : b->x, y0 = a->y < b->y ? a->y : b->y;
+	int x1 = a->x + a->w > b->x + b->w ? a->x + a->w : b->x + b->w;
+	int y1 = a->y + a->h > b->y + b->h ? a->y + a->h : b->y + b->h;
+	a->x = (Sint16)x0; a->y = (Sint16)y0; a->w = (Uint16)(x1 - x0); a->h = (Uint16)(y1 - y0);
+}
+
+/* Changed rectangles of this frame against the reference one: -1 when the
+ * shapes differ (draw the whole frame), else their count (0 = unchanged). */
+static int damage_collect(void)
+{
+	int i, k;
+	s_dmgn = 0;
+	for (i = 0; i < s_qn; i++) {
+		SDL_Rect r;
+		if (!ops_same_shape(&s_q[i], &s_qprev[i])) return -1;
+		if (s_q[i].gen == s_qprev[i].gen) continue;
+		r = s_q[i].dr;
+		for (k = 0; k < s_dmgn; k++)                     /* merge into a touching one */
+			if (rects_touch(&s_dmg[k], &r)) { rect_union(&s_dmg[k], &r); break; }
+		if (k < s_dmgn) continue;
+		if (s_dmgn < SKIP_RMAX) { s_dmg[s_dmgn++] = r; continue; }
+		for (k = 1; k < s_dmgn; k++) rect_union(&s_dmg[0], &s_dmg[k]);   /* too many: one box */
+		rect_union(&s_dmg[0], &r);
+		s_dmgn = 1;
+	}
+	/* a merge can make rectangles touch that did not before: settle once */
+	for (i = 0; i < s_dmgn; i++)
+		for (k = i + 1; k < s_dmgn; k++)
+			if (rects_touch(&s_dmg[i], &s_dmg[k])) {
+				rect_union(&s_dmg[i], &s_dmg[k]);
+				s_dmg[k--] = s_dmg[--s_dmgn];
+			}
+	return s_dmgn;
+}
+
+/* The whole queue, in order, clipped to r. */
+static void skip_run_clipped(const SDL_Rect *r)
+{
+	int i;
+	s_qflushing = 1;
+	for (i = 0; i < s_qn; i++) {
+		const SkipOp *o = &s_q[i];
+		int plain = 0;
+		int x0, y0, x1, y1;
+		SDL_Rect d;
+		if (o->src == NULL && fill_elided_by_next(i)) {   /* same rectangle: same clip */
+			o = &s_q[++i];
+			plain = 1;
+		}
+		x0 = o->dr.x > r->x ? o->dr.x : r->x;
+		y0 = o->dr.y > r->y ? o->dr.y : r->y;
+		x1 = o->dr.x + o->dr.w < r->x + r->w ? o->dr.x + o->dr.w : r->x + r->w;
+		y1 = o->dr.y + o->dr.h < r->y + r->h ? o->dr.y + o->dr.h : r->y + r->h;
+		if (x1 <= x0 || y1 <= y0) continue;
+		d.x = (Sint16)x0; d.y = (Sint16)y0; d.w = (Uint16)(x1 - x0); d.h = (Uint16)(y1 - y0);
+		if (o->src == NULL) {
+			SDL_FillRect_(s_back, &d, o->key);
+		} else {
+			SDL_Rect s;
+			s.x = (Sint16)(o->sr.x + (x0 - o->dr.x));
+			s.y = (Sint16)(o->sr.y + (y0 - o->dr.y));
+			s.w = d.w; s.h = d.h;
+			s_blit_plain = plain;
+			blit8(o->src, &s, s_back, &d);
+			s_blit_plain = 0;
+		}
+	}
+	s_qflushing = 0;
+}
+
+/* The changed rectangles of the back buffer straight onto the screen. */
+static void damage_to_screen(void)
+{
+	int i;
+	for (i = 0; i < s_dmgn; i++) {
+		int x0 = s_dmg[i].x, y0 = s_dmg[i].y;
+		int x1 = x0 + s_dmg[i].w, y1 = y0 + s_dmg[i].h;
+		if (x0 < 0) x0 = 0;
+		if (y0 < 0) y0 = 0;
+		if (x1 > s_back->w) x1 = s_back->w;
+		if (y1 > s_back->h) y1 = s_back->h;
+		if (x1 > s_screen->w) x1 = s_screen->w;
+		if (y1 > s_screen->h) y1 = s_screen->h;
+		if (x1 <= x0 || y1 <= y0) continue;
+		amiga_copy_rows((Uint8 *)s_screen->pixels + (size_t)y0 * s_screen->pitch + x0, s_screen->pitch,
+		                (const Uint8 *)s_back->pixels + (size_t)y0 * s_back->pitch + x0, s_back->pitch,
+		                x1 - x0, y1 - y0);
+		dirty_add(x0, y0, x1 - x0, y1 - y0);
+		s_perf_fpartpx += (unsigned long)(x1 - x0) * (unsigned long)(y1 - y0);
+	}
+}
+
+static Uint32 back_sum(void)
+{
+	Uint32 sum = 0;
+	int x, y;
+	for (y = 0; y < s_back->h; y++) {
+		const Uint32 *p = (const Uint32 *)((const Uint8 *)s_back->pixels + (size_t)y * s_back->pitch);
+		for (x = 0; x < s_back->w / 4; x++) sum = ((sum << 1) | (sum >> 31)) ^ p[x];
+	}
+	return sum;
+}
+
+/* Screen::flip is about to diff-copy `back` onto the screen. Returns 1 when
+ * the frame equals the previous one and nothing more is to be done. */
+static int skip_frame_end(SDL_Surface *back)
+{
+	int same;
+
+	if (SDLmini_FrameSkip == 0) {
+		if (s_back != NULL) { SDLmini_FlushQueue(); s_back = NULL; s_qprevn = -1; }
+		return 0;
+	}
+	if (back != s_back) {
+		SDLmini_FlushQueue();   /* whatever an earlier back buffer still owes */
+		s_back = back;
+		s_qprevn = -1;
+		skip_next_frame();
+		return 0;
+	}
+	same = !s_qforced && s_qprevn == s_qn &&
+	       memcmp(s_q, s_qprev, (size_t)s_qn * sizeof(SkipOp)) == 0;
+	if (same && SDLmini_FrameSkip == 1) {
+		s_qn = 0;
+		s_perf_fskip++;
+		skip_next_frame();
+		return 1;
+	}
+	if (!same && !s_qforced && s_qprevn == s_qn && damage_collect() > 0) {
+		/* only some sources changed: redraw just their rectangles - unless
+		 * they cover most of the frame, where one full pass is cheaper */
+		unsigned long area = 0, full = (unsigned long)s_back->w * (unsigned long)s_back->h;
+		int i;
+		for (i = 0; i < s_dmgn; i++) area += (unsigned long)s_dmg[i].w * s_dmg[i].h;
+		if (area * 10UL < full * 6UL) {
+			memcpy(s_qprev, s_q, (size_t)s_qn * sizeof(SkipOp));   /* the new reference */
+			for (i = 0; i < s_dmgn; i++) skip_run_clipped(&s_dmg[i]);
+			s_perf_fpart++;
+			if (SDLmini_FrameSkip == 2) {
+				/* verify: keep the partial result, draw the whole frame
+				 * again, and compare - then go on as a normal frame */
+				size_t sz = (size_t)s_back->pitch * (size_t)s_back->h;
+				if (s_verifysz < sz) { free(s_verify); s_verify = (Uint8 *)malloc(sz); s_verifysz = s_verify ? sz : 0; }
+				if (s_verify != NULL) {
+					memcpy(s_verify, s_back->pixels, sz);
+					s_noelide = 1;   /* the reference: every op as asked for */
+					skip_run();
+					s_noelide = 0;
+					if (memcmp(s_verify, s_back->pixels, sz) != 0) {
+						s_perf_fverr++;
+						if (s_perf_fverr <= 20) {
+							char b[120];
+							snprintf(b, sizeof b, "fskip: VERIFY MISMATCH #%lu: partial frame, %d rects, %d ops",
+							         s_perf_fverr, s_dmgn, s_qprevn);
+							SDLmini_Log(b);
+						}
+					}
+				}
+				s_qn = 0;
+				skip_next_frame();
+				return 0;            /* the full diff-copy follows */
+			}
+			damage_to_screen();
+			s_qn = 0;
+			skip_next_frame();
+			return 1;
+		}
+	}
+	{
+		Uint32 before = same ? back_sum() : 0;   /* verify mode only */
+		if (!s_qforced) {
+			memcpy(s_qprev, s_q, (size_t)s_qn * sizeof(SkipOp));
+			s_qprevn = s_qn;
+		} else {
+			s_qprevn = -1;
+		}
+		s_noelide = same;   /* verify: the reference frame without the fill elision */
+		skip_run();
+		s_noelide = 0;
+		if (same) {
+			if (back_sum() != before) {
+				s_perf_fverr++;
+				if (s_perf_fverr <= 20) {
+					char b[96];
+					snprintf(b, sizeof b, "fskip: VERIFY MISMATCH #%lu: %d ops judged unchanged",
+					         s_perf_fverr, s_qprevn);
+					SDLmini_Log(b);
+				}
+			} else {
+				s_perf_fskip++;
+			}
+		}
+	}
+	skip_next_frame();
+	return 0;
 }
 
 static int SDL_FillRect_(SDL_Surface *dst, SDL_Rect *dstrect, Uint32 color);
@@ -561,6 +953,13 @@ static int SDL_FillRect_(SDL_Surface *dst, SDL_Rect *dstrect, Uint32 color)
 		if (x2 <= x1 || y2 <= y1) return 0;
 		x = x1; y = y1; w = x2 - x1; h = y2 - y1;
 	}
+	if (skip_queueing(dst)) {
+		SDL_Rect r_;
+		r_.x = (Sint16)x; r_.y = (Sint16)y; r_.w = (Uint16)w; r_.h = (Uint16)h;
+		skip_push(NULL, color, NULL, &r_);
+		return 0;
+	}
+	if (dst == s_screen) skip_invalidate();
 	s_perf_fills++;
 	s_perf_fill_px += (unsigned long)w * h;
 	surf_touch(dst);   /* pixels change: reclassify */
@@ -601,6 +1000,26 @@ static int SDL_FillRect_(SDL_Surface *dst, SDL_Rect *dstrect, Uint32 color)
 	return 0;
 }
 
+static int s_diff_whole;   /* flips left that copy everything without comparing */
+
+/* Do two cells of the diff-copy below differ? libnix memcmp is a byte loop
+ * (move.b/move.b/cmp.b/dbf) behind a call, and the full-screen flip asks it
+ * once per 32-byte cell: 2000 calls and 64000 byte compares per 320x200 frame,
+ * four times that at 640x400, nearly all of them on cells that turn out equal.
+ * Eight longword compares do the same work, stop at the first difference and
+ * need no call. Taken only for whole, longword-aligned cells - always the case
+ * for the flip, whose rows start at x 0 with a pitch that is a multiple of 4;
+ * anything else keeps memcmp. */
+static int cell_differs(const Uint8 *a, const Uint8 *b, int len)
+{
+	if (len == 32 && (((unsigned long)a | (unsigned long)b) & 3) == 0) {
+		const Uint32 *x = (const Uint32 *)a, *y = (const Uint32 *)b;
+		return x[0] != y[0] || x[1] != y[1] || x[2] != y[2] || x[3] != y[3] ||
+		       x[4] != y[4] || x[5] != y[5] || x[6] != y[6] || x[7] != y[7];
+	}
+	return memcmp(a, b, (size_t)len) != 0;
+}
+
 /* 8 -> 8 blit, the only one the game needs. Straight memcpy per row unless a
  * colour key is set, in which case it is a per-pixel test - the same shape as
  * SDL blit_1 without the palette-mapping table, since every surface here
@@ -612,15 +1031,24 @@ static void blit8(SDL_Surface *src, const SDL_Rect *srcrect,
 	const Uint8 *sp = (const Uint8 *)src->pixels + (size_t)srcrect->y * src->pitch + srcrect->x;
 	Uint8       *dp = (Uint8 *)dst->pixels       + (size_t)dstrect->y * dst->pitch + dstrect->x;
 	int w = srcrect->w, h = srcrect->h;
+	int keyed;
 
+	if (skip_queueing(dst) && src != s_back) {
+		skip_push(src, (src->flags & SDL_SRCCOLORKEY) ? (0x80000000UL | (src->format->colorkey & 0xff)) : 0,
+		          srcrect, dstrect);
+		return;
+	}
 	surf_touch(dst);    /* destination pixels change: reclassify before reuse */
-	if ((src->flags & SDL_SRCCOLORKEY) && src->unused1 == 0)
+	keyed = (src->flags & SDL_SRCCOLORKEY) && !s_blit_plain;   /* see fill_elided_by_next */
+	if (keyed && src->unused1 == 0)
 		{ unsigned long ct0_ = amiga_uclock_us(); src->unused1 = surf_classify(src); SDLmini_ProfClassifyUs += amiga_uclock_us() - ct0_; }
 	/* Colorkey blits onto the screen dirty their rectangle as-is; the plain
 	 * path below diff-copies instead and dirties only what really changed. */
-	if (dst == s_screen && (src->flags & SDL_SRCCOLORKEY) && src->unused1 != 2)
+	if (dst == s_screen && keyed && src->unused1 != 2) {
 		dirty_add(dstrect->x, dstrect->y, w, h);
-	if ((src->flags & SDL_SRCCOLORKEY) && src->unused1 == 3) {
+		skip_invalidate();   /* the screen now differs from the back buffer */
+	}
+	if (keyed && src->unused1 == 3) {
 		/* wariant C: walk the cached runs - memcpy only, no compares */
 		struct private_hwdata *hd = src->hwdata;
 		int sx0 = srcrect->x, sx1 = srcrect->x + w;
@@ -639,7 +1067,7 @@ static void blit8(SDL_Surface *src, const SDL_Rect *srcrect,
 				if (b > a) memcpy(drow + (a - sx0), srow + a, (size_t)(b - a));
 			}
 		}
-	} else if ((src->flags & SDL_SRCCOLORKEY) && src->unused1 != 2) {
+	} else if (keyed && src->unused1 != 2) {
 		/* Colorkey blit, 4 pixels at a time (LISTA-ROBOT pkt 2, wariant A).
 		 * Measured before this change: ~330k colorkey pixels per geoscape
 		 * frame (the globe's radar/country/marker layers are ~95% transparent
@@ -682,36 +1110,57 @@ static void blit8(SDL_Surface *src, const SDL_Rect *srcrect,
 		}
 	} else if (dst == s_screen) {
 		/* Diff-copy (see the dirty-rectangle comment above): compare in
-		 * 32-byte cells, copy changed cells only, dirty the changed area. */
+		 * 32-byte cells, copy changed cells only, dirty the changed area.
+		 * Neighbouring changed cells of a row are copied as one run.
+		 * When nearly everything changes (the battlescape scrolling: 99 of
+		 * 100 frames at 640x400 on a Warp 060, flip ~32 ms) the comparing
+		 * saves nothing, so after a frame with more than 90% of the cells
+		 * changed the next 7 are copied whole, then compared again. */
 		int dy0 = -1, dy1 = -1, dx0 = w, dx1 = 0;
+		unsigned long cells = 0, changed = 0;
 		s_perf_blits++;
+		if (src != s_back) skip_invalidate();   /* the screen gets something else than the back buffer */
+		if (s_diff_whole > 0) {
+			s_diff_whole--;
+			amiga_copy_rows(dp, dst->pitch, sp, src->pitch, w, h);
+			s_perf_px += (unsigned long)w * h;
+			dirty_add(dstrect->x, dstrect->y, w, h);
+			return;
+		}
 		for (y = 0; y < h; y++) {
-			int c;
+			int c, run = -1;
 			for (c = 0; c < w; c += 32) {
 				int len = (w - c < 32) ? (w - c) : 32;
-				if (memcmp(sp + c, dp + c, (size_t)len) != 0) {
-					memcpy(dp + c, sp + c, (size_t)len);
-					s_perf_px += (unsigned long)len;
+				cells++;
+				if (cell_differs(sp + c, dp + c, len)) {
+					changed++;
+					if (run < 0) run = c;
 					if (c < dx0) dx0 = c;
 					if (c + len > dx1) dx1 = c + len;
 					if (dy0 < 0) dy0 = y;
 					dy1 = y;
+				} else if (run >= 0) {
+					memcpy(dp + run, sp + run, (size_t)(c - run));
+					s_perf_px += (unsigned long)(c - run);
+					run = -1;
 				}
+			}
+			if (run >= 0) {
+				memcpy(dp + run, sp + run, (size_t)(w - run));
+				s_perf_px += (unsigned long)(w - run);
 			}
 			sp += src->pitch;
 			dp += dst->pitch;
 		}
+		if (changed * 10UL > cells * 9UL) s_diff_whole = 7;
 		if (dy0 >= 0)
 			dirty_add(dstrect->x + dx0, dstrect->y + dy0,
 			          dx1 - dx0, dy1 - dy0 + 1);
 	} else {
 		s_perf_blits++;
 		s_perf_px += (unsigned long)w * h;
-		for (y = 0; y < h; y++) {
-			memcpy(dp, sp, (size_t)w);
-			sp += src->pitch;
-			dp += dst->pitch;
-		}
+		/* rows by MOVE16 where they line up (68040/060), memcpy otherwise */
+		amiga_copy_rows(dp, dst->pitch, sp, src->pitch, w, h);
 	}
 }
 
@@ -722,6 +1171,15 @@ int SDL_UpperBlit(SDL_Surface *src, SDL_Rect *srcrect, SDL_Surface *dst, SDL_Rec
 	int cx1, cy1, cx2, cy2;
 
 	if (src == NULL || dst == NULL) return -1;
+
+	/* Screen::flip: the whole back buffer onto the screen. The frame is
+	 * complete - compare it with the last one (unchanged-frame skip). */
+	if (dst == s_screen && srcrect == NULL && dstrect == NULL &&
+	    src->w == s_screen->w && src->format->BitsPerPixel == 8) {
+		if (skip_frame_end(src)) return 0;
+	} else {
+		skip_reading(src);
+	}
 
 	if (src->format->BitsPerPixel != 8 || dst->format->BitsPerPixel != 8) {
 		SDL_SetError("SDLmini: only 8bpp blits exist in this port (%d -> %d)",
@@ -849,6 +1307,7 @@ SDL_Surface *SDL_SetVideoMode(int width, int height, int bpp, Uint32 flags)
 	}
 	s_screen->flags |= SDL_HWSURFACE | SDL_FULLSCREEN;
 	dirty_add(0, 0, s_screen->w, s_screen->h);   /* fresh screen: convert all */
+	skip_invalidate();                            /* ... and diff-copy all */
 	if (!s_opened_once) {
 		s_opened_once = 1;
 		AmigaSplash_Show();   /* loading splash, once, right after the first open */
@@ -925,11 +1384,13 @@ int SDL_Flip(SDL_Surface *screen)
 		char b_[224];
 		Uint32 now_ = SDL_GetTicks();
 		snprintf(b_, sizeof b_,
-			"perf: 100 frames in %lu ms: c2p %lu ms (%lu px, %lu skipped), blits ck %lu (%lu px) plain %lu (%lu px diff), fills %lu (%lu px)",
+			"perf: 100 frames in %lu ms: c2p %lu ms (%lu px, %lu skipped), blits ck %lu (%lu px) plain %lu (%lu px diff), fills %lu (%lu px), fskip %lu verr %lu fpart %lu (%lu px)",
 			(unsigned long)(now_ - s_perf_last_ms), s_perf_c2p_ms,
 			s_perf_c2p_px, s_perf_skips,
 			s_perf_blits_ck, s_perf_px_ck, s_perf_blits, s_perf_px,
-			s_perf_fills, s_perf_fill_px);
+			s_perf_fills, s_perf_fill_px, s_perf_fskip, s_perf_fverr, s_perf_fpart, s_perf_fpartpx);
+		s_perf_fskip = 0;   /* per window; verify mismatches stay cumulative */
+		s_perf_fpart = s_perf_fpartpx = 0;
 		SDLmini_Log(b_);
 		s_perf_last_ms = now_;
 		s_perf_c2p_ms = 0;

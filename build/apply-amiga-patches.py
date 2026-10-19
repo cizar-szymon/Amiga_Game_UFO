@@ -4629,9 +4629,10 @@ def main():
         "\t\tif (_fcValid[ph_] && _fcPix[ph_] != 0)\n"
         "\t\t{\n"
         "\t\t\tSDL_Surface *d_ = getSurface();\n"
+        "\t\t\tSDLmini_Written(d_);   /* the copy and the repairs below write d_ directly */\n"
         "\t\t\tconst Uint8 *sp_ = _fcPix[ph_];\n"
         "\t\t\tUint8 *dp_ = (Uint8 *)d_->pixels;\n"
-        "\t\t\tfor (int y_ = 0; y_ < h_; ++y_) { memcpy(dp_, sp_, w_); sp_ += w_; dp_ += d_->pitch; }\n"
+        "\t\t\tamiga_copy_rows(dp_, d_->pitch, sp_, w_, w_, h_);   /* MOVE16 rows on 040/060 */\n"
         "\t\t\tif (_fcDirtyN[ph_] == 0)\n"
         "\t\t\t{\n"
         "\t\t\t\t++AmCp_hit;\n"
@@ -6308,38 +6309,97 @@ def main():
         "\treturn dest;\n"
         "}\n"
         "\n"
+        "/* AMIGA-PORT: shadowApply(dest, v) as a table. The result depends only on\n"
+        " * dest and min(v, 31), and not on v at all when v <= 0, so [k][dest] - k 0\n"
+        " * for v <= 0, min(v, 31) otherwise - holds every possible answer: 8 KB,\n"
+        " * built from shadowApply itself, again whenever the ruleset's OCEAN_COLOR\n"
+        " * is another one. The per-pixel work becomes one table read instead of\n"
+        " * shadowApply's tests and its division by 3 (on the 68060 a trapped\n"
+        " * 64-bit MULS.L, see the porting notes). */\n"
+        "static Uint8 s_shadeLut[32][256];\n"
+        "static int s_shadeLutOcean = -1;\n"
+        "\n"
+        "static void shadeLutBuild()\n"
+        "{\n"
+        "\tfor (int k = 0; k < 32; ++k)\n"
+        "\t\tfor (int d = 0; d < 256; ++d)\n"
+        "\t\t\ts_shadeLut[k][d] = shadowApply((Uint8)d, k);\n"
+        "\ts_shadeLutOcean = Globe::OCEAN_COLOR;\n"
+        "}\n"
+        "\n"
+        "/* Where row r of the normals table is inside the disc (z != 0): [*x0, *x1).\n"
+        " * The disc is convex and centred on the surface (drawShadowHalfFix is only\n"
+        " * used then), so the inside pixels of a row are one interval around the\n"
+        " * centre column, and its ends are found by bisection - ~20 table reads per\n"
+        " * row instead of one per pixel. */\n"
+        "static void discSpan(const CordFix *row, int w2, int *x0, int *x1)\n"
+        "{\n"
+        "\tconst int c = w2 / 2;\n"
+        "\tif (row[c].z == 0) { *x0 = *x1 = c; return; }   /* the row misses the disc */\n"
+        "\tint lo = 0, hi = c;                 /* first inside in [lo, hi]: row[hi] is inside */\n"
+        "\twhile (lo < hi) { const int m = (lo + hi) / 2; if (row[m].z != 0) hi = m; else lo = m + 1; }\n"
+        "\t*x0 = lo;\n"
+        "\tlo = c; hi = w2;                    /* first outside in (lo, hi]: row[lo] is inside */\n"
+        "\twhile (hi - lo > 1) { const int m = (lo + hi) / 2; if (row[m].z != 0) lo = m; else hi = m; }\n"
+        "\t*x1 = hi;\n"
+        "}\n"
+        "\n"
+        "/* Walks whole rows: the block values of a row pair first (one dot product\n"
+        " * per 2x2 block, from its top-left pixel), then each row pixel by pixel\n"
+        " * through s_shadeLut. Outside the disc span the pixels are cleared, inside\n"
+        " * it the normals table is not read at all except for block anchors (even\n"
+        " * rows) and the few rim pixels whose anchor is outside - the table is 6\n"
+        " * bytes a pixel, 1.4 MB at 640x400, more than the Warp's L2. Bit for bit\n"
+        " * the same picture as the 2x2-block walk with shadowApply per pixel it\n"
+        " * replaces (checked on the host with random globes of both sizes). */\n"
+        "static std::vector<int> s_shadeBlocks;\n"
+        "\n"
         "static void drawShadowHalfFix(SDL_Surface *ss, const CordFix *ef, int w2, int h2, const CordFix &sun, const Sint16 *noise, int nsz)\n"
         "{\n"
+        "\tif (s_shadeLutOcean != Globe::OCEAN_COLOR) shadeLutBuild();\n"
         "\tUint8 *px = (Uint8 *)ss->pixels;\n"
         "\tconst int pitch = ss->pitch;\n"
+        "\tconst int nb = (w2 + 1) / 2;\n"
+        "\tif ((int)s_shadeBlocks.size() < nb) s_shadeBlocks.resize(nb);\n"
+        "\tint *vb = &s_shadeBlocks[0];\n"
         "\tfor (int j = 0; j < h2; j += 2)\n"
         "\t{\n"
         "\t\tconst int rows = (j + 1 < h2) ? 2 : 1;\n"
-        "\t\tconst Sint16 *nrow0 = noise + (j % nsz) * nsz;\n"
-        "\t\tconst Sint16 *nrow1 = noise + ((j + 1) % nsz) * nsz;\n"
-        "\t\tint n0 = 0;\n"
-        "\t\tfor (int i = 0; i < w2; i += 2)\n"
+        "\t\tint sx0[2], sx1[2];\n"
+        "\t\tdiscSpan(ef + (size_t)j * w2, w2, &sx0[0], &sx1[0]);\n"
+        "\t\tif (rows == 2) discSpan(ef + (size_t)(j + 1) * w2, w2, &sx0[1], &sx1[1]);\n"
+        "\t\telse { sx0[1] = sx0[0]; sx1[1] = sx1[0]; }\n"
+        "\t\t/* block values for the blocks either row's span touches; 0x7FFF where\n"
+        "\t\t * the anchor (row j, even column) is outside (shadowDotV never\n"
+        "\t\t * returns it): those pixels compute their own */\n"
         "\t\t{\n"
-        "\t\t\tconst int cols = (i + 1 < w2) ? 2 : 1;\n"
-        "\t\t\tint n1 = n0 + 1; if (n1 >= nsz) n1 = 0;\n"
-        "\t\t\tconst CordFix *e0 = &ef[(size_t)j * w2 + i];\n"
-        "\t\t\tconst int vb = (e0->z != 0) ? shadowDotV(*e0, sun) : 0x7FFF;\n"
-        "\t\t\tfor (int bj = 0; bj < rows; ++bj)\n"
+        "\t\t\tconst CordFix *e0 = ef + (size_t)j * w2;\n"
+        "\t\t\tconst int b0 = (sx0[0] < sx0[1] ? sx0[0] : sx0[1]) >> 1;\n"
+        "\t\t\tconst int b1 = ((sx1[0] > sx1[1] ? sx1[0] : sx1[1]) + 1) >> 1;\n"
+        "\t\t\tfor (int b = b0; b < b1; ++b)\n"
+        "\t\t\t\tvb[b] = (2 * b >= sx0[0] && 2 * b < sx1[0]) ? shadowDotV(e0[2 * b], sun) : 0x7FFF;\n"
+        "\t\t}\n"
+        "\t\tfor (int bj = 0; bj < rows; ++bj)\n"
+        "\t\t{\n"
+        "\t\t\tUint8 *dp = px + (size_t)(j + bj) * pitch;\n"
+        "\t\t\tconst CordFix *eb = ef + (size_t)(j + bj) * w2;\n"
+        "\t\t\tconst Sint16 *nr = noise + ((j + bj) % nsz) * nsz;\n"
+        "\t\t\tconst int x0 = sx0[bj], x1 = sx1[bj];\n"
+        "\t\t\tif (x0 > 0) memset(dp, 0, (size_t)x0);            /* outside the disc */\n"
+        "\t\t\tif (x1 < w2) memset(dp + x1, 0, (size_t)(w2 - x1));\n"
+        "\t\t\tint n = x0 % nsz;\n"
+        "\t\t\tfor (int i = x0; i < x1; ++i)\n"
         "\t\t\t{\n"
-        "\t\t\t\tUint8 *dp = px + (size_t)(j + bj) * pitch + i;\n"
-        "\t\t\t\tconst CordFix *eb = &ef[(size_t)(j + bj) * w2 + i];\n"
-        "\t\t\t\tconst Sint16 *nr = bj ? nrow1 : nrow0;\n"
-        "\t\t\t\tconst int ni[2] = { n0, n1 };\n"
-        "\t\t\t\tfor (int bi = 0; bi < cols; ++bi)\n"
+        "\t\t\t\tconst Uint8 dest = dp[i];\n"
+        "\t\t\t\tif (dest != 0)\n"
         "\t\t\t\t{\n"
-        "\t\t\t\t\tconst Uint8 dest = dp[bi];\n"
-        "\t\t\t\t\tif (!dest || eb[bi].z == 0) { dp[bi] = 0; continue; }\n"
-        "\t\t\t\t\tint v = (vb != 0x7FFF) ? vb : shadowDotV(eb[bi], sun);\n"
-        "\t\t\t\t\tv -= nr[ni[bi]];\n"
-        "\t\t\t\t\tdp[bi] = shadowApply(dest, v);\n"
+        "\t\t\t\t\tint v = vb[i >> 1];\n"
+        "\t\t\t\t\tif (v == 0x7FFF) v = shadowDotV(eb[i], sun);\n"
+        "\t\t\t\t\tv -= nr[n];\n"
+        "\t\t\t\t\tdp[i] = s_shadeLut[v <= 0 ? 0 : (v > 31 ? 31 : v)][dest];\n"
         "\t\t\t\t}\n"
+        "\t\t\t\tif (++n == nsz) n = 0;\n"
         "\t\t\t}\n"
-        "\t\t\tn0 += 2; if (n0 >= nsz) n0 -= nsz;\n"
         "\t\t}\n"
         "\t}\n"
         "}\n"
@@ -6667,8 +6727,9 @@ def main():
         "\tvoid resize(int width, int height);\n"
         "public:\n"
         "#ifdef __AMIGA__\n"
-        "\t/// AMIGA-PORT: the run table is stale (pixels changed).\n"
-        "\tvoid amigaSpansDrop() { _amSpanState = 0; }\n"
+        "\t/// AMIGA-PORT: the run table is stale (pixels changed) - and SDLmini's\n"
+        "\t/// unchanged-frame skip must see the write too (SDL_video.h).\n"
+        "\tvoid amigaSpansDrop() { _amSpanState = 0; SDLmini_Written(_surface); }\n"
         "\t/// AMIGA-PORT: build the run table from the pixels.\n"
         "\tvoid amigaSpansBuild();\n"
         "#endif\n",
@@ -6679,6 +6740,7 @@ def main():
         "\t}\n",
         "#ifdef __AMIGA__\n"
         "\t\t_amSpanState = 0;\n"
+        "\t\tSDLmini_Written(_surface);\n"
         "#endif\n"
         "\t\t((Uint8 *)_surface->pixels)[y * _surface->pitch + x * _surface->format->BytesPerPixel] = pixel;\n"
         "\t}\n",
@@ -6767,12 +6829,20 @@ def main():
         "spans dtor + build")))
     # every Surface write path drops the table
     for sig in ("void Surface::clear(Uint32 color)\n{\n",
-                "void Surface::offset(int off, int min, int max, int mul)\n{\n",
+                "void Surface::drawRect(SDL_Rect *rect, Uint8 color)\n{\n",
+                "void Surface::drawRect(Sint16 x, Sint16 y, Sint16 w, Sint16 h, Uint8 color)\n{\n"):
+        results.append(("Engine/Surface.cpp (spans drop: %s)" % sig.split("(")[0].split("::")[1], edit(
+            os.path.join(src, "Engine", "Surface.cpp"), sig,
+            sig + "#ifdef __AMIGA__\n\t_amSpanState = 0;\n#endif\n",
+            "spans drop")))
+    # ... and the ones that do not write through an SDL call also tell SDLmini
+    # (unchanged-frame skip: the surface gets a new content generation). Not
+    # clear/drawRect above: they are SDL_FillRect, which SDLmini sees anyway -
+    # and on the back buffer an early notice would cancel the frame skip.
+    for sig in ("void Surface::offset(int off, int min, int max, int mul)\n{\n",
                 "void Surface::offsetBlock(int off, int blk, int mul)\n{\n",
                 "void Surface::invert(Uint8 mid)\n{\n",
                 "void Surface::copy(Surface *surface)\n{\n",
-                "void Surface::drawRect(SDL_Rect *rect, Uint8 color)\n{\n",
-                "void Surface::drawRect(Sint16 x, Sint16 y, Sint16 w, Sint16 h, Uint8 color)\n{\n",
                 "void Surface::drawLine(Sint16 x1, Sint16 y1, Sint16 x2, Sint16 y2, Uint8 color)\n{\n",
                 "void Surface::drawCircle(Sint16 x, Sint16 y, Sint16 r, Uint8 color)\n{\n",
                 "void Surface::drawPolygon(Sint16 *x, Sint16 *y, int n, Uint8 color)\n{\n",
@@ -6782,7 +6852,7 @@ def main():
                 "void Surface::resize(int width, int height)\n{\n"):
         results.append(("Engine/Surface.cpp (spans drop: %s)" % sig.split("(")[0].split("::")[1], edit(
             os.path.join(src, "Engine", "Surface.cpp"), sig,
-            sig + "#ifdef __AMIGA__\n\t_amSpanState = 0;\n#endif\n",
+            sig + "#ifdef __AMIGA__\n\t_amSpanState = 0;\n\tSDLmini_Written(_surface);\n#endif\n",
             "spans drop")))
     results.append(("Engine/Surface.cpp (spans drop: blit dest)", edit(
         os.path.join(src, "Engine", "Surface.cpp"),
@@ -6792,7 +6862,7 @@ def main():
         "\t\ttarget.x = getX();\n"
         "\t\ttarget.y = getY();\n"
         "#ifdef __AMIGA__\n"
-        "\t\tsurface->amigaSpansDrop();\n"
+        "\t\tsurface->_amSpanState = 0;   /* not amigaSpansDrop(): SDLmini sees the blit itself */\n"
         "#endif\n"
         "\t\tSDL_BlitSurface(_surface, cropper, surface->getSurface(), &target);\n",
         "spans drop blit dest")))
@@ -6804,6 +6874,7 @@ def main():
         "#ifdef __AMIGA__\n"
         "\tbool amDone_ = false;\n"
         "\tsurface->_amSpanState = 0;   /* destination pixels change */\n"
+        "\tSDLmini_Written(ds_);        /* ... written directly below, not through SDL */\n"
         "\tif (_amSpanState == 0) amigaSpansBuild();\n"
         "\tif (_amSpanState == 1)\n"
         "\t{\n"
@@ -8175,6 +8246,92 @@ def main():
         "\t_info.push_back(OptionInfo(\"amigaPerfLog\", &amigaPerfLog, 0));\n"
         "\t_info.push_back(OptionInfo(\"amigaSplitWalk\", &amigaSplitWalk, true));\n",
         "amigaSplitWalk info")))
+
+    # 6amY. Unchanged-frame skip (native/sdlmini/src/sdlmini_video.c): a frame
+    #       whose fills and blits onto the back buffer are the same as the last
+    #       frame's - same sources, same content generations, same rectangles -
+    #       is not drawn again. amigaFrameSkip: 0 off, 1 on, 2 verify (draw it
+    #       anyway and log "fskip: VERIFY MISMATCH" if the picture changed). A
+    #       switch for measuring and for bug reports, so it lives in
+    #       user/options.cfg rather than on the Amiga tab.
+    results.append(("Options.inc.h (amigaFrameSkip var)", edit(
+        os.path.join(src, "Engine", "Options.inc.h"),
+        "OPT bool amigaSplitWalk; /* spread the per-step FOV/light over the walk animation */\n",
+        "OPT bool amigaSplitWalk; /* spread the per-step FOV/light over the walk animation */\n"
+        "OPT int amigaFrameSkip; /* 0 off, 1 skip unchanged frames, 2 verify the skip */\n",
+        "amigaFrameSkip var")))
+    results.append(("Options.cpp (amigaFrameSkip info)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t_info.push_back(OptionInfo(\"amigaSplitWalk\", &amigaSplitWalk, true));\n",
+        "\t_info.push_back(OptionInfo(\"amigaSplitWalk\", &amigaSplitWalk, true));\n"
+        "\t_info.push_back(OptionInfo(\"amigaFrameSkip\", &amigaFrameSkip, 1));\n",
+        "amigaFrameSkip info")))
+    results.append(("Options.cpp (amigaFrameSkip mirror)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t\t\tAmigaPerfLog = amigaPerfLog;\n",
+        "\t\t\tAmigaPerfLog = amigaPerfLog;\n"
+        "\t\t\tSDLmini_FrameSkip = amigaFrameSkip;\n",
+        "amigaFrameSkip mirror")))
+    # 6amN. amigaNativeScale: the screen follows the base resolution of the
+    #       part of the game being shown, instead of OpenXcom scaling a smaller
+    #       base up to one fixed display. With geoscapeScale 0 (320x200) and
+    #       battlescapeScale 2 (640x400) the Geoscape runs on a 320x200 screen
+    #       and the battles on a native 640x400 one: at 640x400 the battlescape
+    #       shows four times the map, while the globe only gets more expensive
+    #       (every redraw is the whole globe) without helping the player.
+    #       Switching between them reopens the screen, as Amiga games always
+    #       did; nothing is ever scaled (the port's scaler costs ~146 ms a
+    #       640x480 frame on a Warp 060), and the pointer stays 1:1.
+    results.append(("Options.inc.h (amigaNativeScale var)", edit(
+        os.path.join(src, "Engine", "Options.inc.h"),
+        "OPT int amigaFrameSkip; /* 0 off, 1 skip unchanged frames, 2 verify the skip */\n",
+        "OPT int amigaFrameSkip; /* 0 off, 1 skip unchanged frames, 2 verify the skip */\n"
+        "OPT bool amigaNativeScale; /* the screen follows the base resolution: no scaling, a mode switch instead */\n",
+        "amigaNativeScale var")))
+    results.append(("Options.cpp (amigaNativeScale info)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t_info.push_back(OptionInfo(\"amigaFrameSkip\", &amigaFrameSkip, 1));\n",
+        "\t_info.push_back(OptionInfo(\"amigaFrameSkip\", &amigaFrameSkip, 1));\n"
+        "\t_info.push_back(OptionInfo(\"amigaNativeScale\", &amigaNativeScale, false));\n",
+        "amigaNativeScale info")))
+    results.append(("Screen.cpp (amigaNativeScale)", edit(
+        os.path.join(src, "Engine", "Screen.cpp"),
+        "\tmakeVideoFlags();\n"
+        "\n"
+        "\tif (!_surface || (_surface->getSurface()->format->BitsPerPixel != _bpp ||\n",
+        "\tmakeVideoFlags();\n"
+        "#ifdef __AMIGA__\n"
+        "\tif (Options::amigaNativeScale)\n"
+        "\t{\n"
+        "\t\t/* AMIGA-PORT: the screen IS the base resolution (6amN). Most callers\n"
+        "\t\t   pass resetVideo false after a scale change; a different size must\n"
+        "\t\t   still reopen the screen, or the picture would be scaled. */\n"
+        "\t\twidth = _baseWidth;\n"
+        "\t\theight = _baseHeight;\n"
+        "\t\tif (_screen && (_screen->w != width || _screen->h != height))\n"
+        "\t\t\tresetVideo = true;\n"
+        "\t}\n"
+        "#endif\n"
+        "\n"
+        "\tif (!_surface || (_surface->getSurface()->format->BitsPerPixel != _bpp ||\n",
+        "amigaNativeScale")))
+
+    # 6amZ. Row copies by MOVE16 on 040/060 (native/amiga_copy.c): the frame
+    #       cache's copy into the map surface uses amiga_copy_rows.
+    results.append(("Map.cpp (amiga_copy include)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        '#include "UnitSprite.h"\n',
+        '#include "UnitSprite.h"\n'
+        '#ifdef __AMIGA__\n'
+        '#include "amiga_copy.h"\n'
+        '#endif\n',
+        "amiga_copy include")))
+    results.append(("Options.cpp (amigaFrameSkip extern)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        'extern "C" int AmigaPerfLog;\n',
+        'extern "C" int AmigaPerfLog;\n'
+        'extern "C" int SDLmini_FrameSkip;\n',
+        "amigaFrameSkip extern")))
     results.append(("en-US.yml (split walk strings)", edit(
         os.path.join(src, "..", "bin", "common", "Language", "en-US.yml"),
         "  STR_AMIGA_ANIM_HALF: \"Half (faster)\"\n",

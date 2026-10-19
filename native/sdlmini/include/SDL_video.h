@@ -119,7 +119,27 @@ typedef struct SDL_Surface {
 
 	/** Reference count -- used when freeing surface */
 	int refcount;				/**< Read-mostly */
+
+	/* AMIGA-PORT: unchanged-frame skip (sdlmini_video.c). amgen is a fresh
+	 * value from SDLmini_Gen after every write to the pixels; amqueued is the
+	 * frame serial in which a blit FROM this surface onto the back buffer is
+	 * still waiting to run. */
+	Uint32 amgen;
+	Uint32 amqueued;
 } SDL_Surface;
+
+/* AMIGA-PORT: every write to a surface's pixels must be visible to SDLmini -
+ * through an SDL call, SDL_LockSurface/SDL_UnlockSurface around it, or this,
+ * called BEFORE the pixels change. It runs the queued back-buffer work that
+ * still reads this surface, then gives the surface a new generation. */
+extern Uint32 SDLmini_Gen;
+extern Uint32 SDLmini_QueueSerial;
+extern void SDLmini_FlushQueue(void);
+static __inline__ void SDLmini_Written(SDL_Surface *s)
+{
+	if (s->amqueued == SDLmini_QueueSerial) SDLmini_FlushQueue();
+	s->amgen = ++SDLmini_Gen;
+}
 
 /** @name SDL_Surface Flags
  *  These are the currently supported flags for the SDL_surface

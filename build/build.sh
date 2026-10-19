@@ -53,6 +53,18 @@ else
 	CPU="-mcpu=68020 -msoft-float"
 	FPUSUF=""
 fi
+# AMIGA_TUNE060=1 adds -mtune=68060 (code still runs on a 68020). With plain
+# -mcpu=68020 gcc turns every division by a constant into a 64-bit MULS.L/MULU.L
+# (multiply by the reciprocal, Dh:Dl result) - an instruction the 68060 does
+# not have: each one traps into 68060.library and is emulated. Tuned for the
+# 060, gcc emits a plain 32-bit DIVS.L/DIVU.L instead, which the 060 executes.
+# Objects and binaries get a -t060 suffix so the normal build is untouched.
+if [ "$AMIGA_TUNE060" = "1" ]; then
+	CPU="$CPU -mtune=68060"
+	TUNESUF="-t060"
+else
+	TUNESUF=""
+fi
 OPT="-O1"
 COMMON="$CPU $OPT -noixemul -fomit-frame-pointer"
 # __NO_OPENGL and __NO_MUSIC are upstream's own switches: the first compiles
@@ -126,7 +138,7 @@ fi
 
 # ------------------------------------------------------------------ build --
 
-OBJ=$WORK/obj$FPUSUF
+OBJ=$WORK/obj$FPUSUF$TUNESUF
 mkdir -p "$OBJ"
 
 # Is any file the object depends on newer than the object? The dependency list
@@ -253,7 +265,7 @@ done
 # wide string; that garbled every std::wstring in the game).
 for f in amiga_gfx.c amiga_audio.c amiga_adpcm.c amiga_startup.c amiga_stack.c \
          fp_conv.c fp_single.c fp_double.c amiga_trap.c amiga_locale.c libnix_fixes.c amiga_splash.c amiga_splash_data.c amiga_uclock.c \
-         amiga_music.c amiga_watchdog.c; do
+         amiga_music.c amiga_watchdog.c amiga_copy.c; do
 	NATIVE_OBJS="$NATIVE_OBJS $(compile_c "$NATIVE" "$f")"
 done
 
@@ -311,7 +323,7 @@ link_variant() {
 	m68k-amigaos-gcc $CFLAGS -DAMIGA_BACKEND_DEFAULT=$default \
 		-c "$NATIVE/sdlmini/src/sdlmini_backend.c" -o "$OBJ/backend_$name.o"
 
-	m68k-amigaos-g++ $COMMON -o "$WORK/openxcom-$name$FPUSUF" \
+	m68k-amigaos-g++ $COMMON -o "$WORK/openxcom-$name$FPUSUF$TUNESUF" \
 		$GAME_OBJS $NATIVE_OBJS "$OBJ/backend_$name.o" $YAML_OBJS -lamiga -lm
 
 	# DO NOT STRIP. m68k-amigaos-strip produces a Hunk executable that loads
@@ -321,8 +333,8 @@ link_variant() {
 	# stripped is silent. (The openttd port configures with --disable-strip,
 	# which is the same conclusion reached from the other direction.)
 	# The cost is ~3 MB of symbols in a 15 MB binary; correctness first.
-	cp "$WORK/openxcom-$name$FPUSUF" "$DEPLOY/openxcom-$name$FPUSUF"
-	ls -la "$WORK/openxcom-$name$FPUSUF"
+	cp "$WORK/openxcom-$name$FPUSUF$TUNESUF" "$DEPLOY/openxcom-$name$FPUSUF$TUNESUF"
+	ls -la "$WORK/openxcom-$name$FPUSUF$TUNESUF"
 }
 
 link_variant aga 0     # AGA screen + chunky-to-planar
