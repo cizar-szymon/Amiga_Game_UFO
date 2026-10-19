@@ -199,6 +199,11 @@ pomiar `STATS` jako punkt wyjścia optymalizacji.
   zapis** długimi słowami, nigdy odczyt; jeden blit prostokąta zmian (sprzęt Warpa na 16 bitach);
   na 32 bitach kopię VRAM→VRAM robi CPU, więc tam `WPA` zamiast `BLIT`. `MOVE16` tylko po
   `CacheClearE` (copyback).
+- **Zmierzone liczby dla Warpa** (zapis/odczyt/kopia różnymi instrukcjami, składanie w Fast RAM vs
+  VRAM, koszt `BltBitMap` na wywołanie, sprite'y z maską i przez CPU, 8/16-bit) i wynikające z nich
+  zalecenia: **`WarpBench/README.md`** (programy testowe w tym samym katalogu). Najważniejsze:
+  składać w Fast RAM; `BltBitMap` tylko dla dużych bloków (~15 µs narzutu na wywołanie, cały ekran
+  0,4–0,8 ms); nigdy `BltMaskBitMapRastPort` (1–2,4 ms na sprite 32×32); kopie wierszami przez MOVE16.
 - Dwie bitmapy z kopią zawartości (`shadow`) dla migających elementów – blit zamiast zapisu.
 - **Pomijanie klatek obrazu** (`FRAMESKIP=AUTO`): logika i dźwięk zawsze w pełnym tempie, obraz
   pomijany przy spóźnieniu > 1/3 klatki (maks. 3 pod rząd).
@@ -212,6 +217,9 @@ pomiar `STATS` jako punkt wyjścia optymalizacji.
 - (A) zmienne w rejestrach, stałe koszty zamiast licznika dostępów, wstawki asm w gorących pętlach.
 - Pętle obrazu i konwersji formatów w asm (`video_68k.s`, `convert16`).
 - vbcc `-O3 -speed`, `-cpu=68060`; brak dzieleń w pętlach (przesunięcia, tablice).
+- gcc z `-mcpu=68020`: każde dzielenie przez stałą to 64-bitowe `MULS.L`, którego 68060 nie ma
+  (pułapka do `68060.library`, ~1,27 µs zamiast 0,39 µs); `-mtune=68060` to usuwa, kod dalej działa
+  na 020. Sprawdzenie binarki: `WarpBench/find64.sh` (objdump z `-m m68k:68060`).
 
 *Dźwięk*
 - Paula zamiast AHI (AHI miksuje programowo – ok. 5% CPU 060/50).

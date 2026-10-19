@@ -6,4 +6,8 @@
 !/PORTING_PLAN.md
 !/AmiAgent/
 !/Warp*.pdf
+!/WarpBench/
+/WarpBench/vrambench
+/WarpBench/copybench
+/WarpBench/blitbench
 *.cfg
