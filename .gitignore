@@ -1,0 +1,26 @@
+# Workspace around the AmiXcom port: tools, test scripts and analysis only.
+# The port itself is its own repository; game data must never be committed.
+/AmiXcom/
+/work/
+/XCOM/
+/XCOM_*/
+/data/
+
+# downloads, build logs, run results
+/docker/cache/
+/docker/*.log
+/winuae/perf/
+/winuae/perf-real/
+/winuae/*.png
+/winuae/*.pid
+
+# Amiga binaries built from the benchmark sources
+/tools/mulbench/mulbench
+/tools/vrambench/copybench
+/tools/vrambench/copytest
+/tools/vrambench/vrambench
+
+*.cfg
+*.log
+*.sav
+*.asav

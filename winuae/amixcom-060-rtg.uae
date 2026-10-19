@@ -1,0 +1,72 @@
+config_description=AmiXcom - A1200 68060+FPU OS3.2 RTG (uaegfx) + bsdsocket emulation (AmiAgent)
+config_hardware=true
+config_host=true
+config_version=5.1.0
+; no GUI: started from scripts (AmiXcom's CLAUDE.md: anything else waits for a human)
+use_gui=no
+
+; ---- ROM ----
+kickstart_rom_file=C:\amiga-dev\roms\kicka1200.rom
+kickstart_ext_rom_file=
+
+; ---- chipset ----
+chipset=aga
+chipset_compatible=A1200
+ntsc=false
+collision_level=playfields
+
+; ---- CPU: 68060 with FPU and MMU, as close to the Warp1260X as WinUAE gets ----
+; cpu_speed=max is for turnaround only: timings from WinUAE prove nothing about the 060/100.
+cpu_type=68060
+cpu_model=68060
+fpu_model=68060
+mmu_model=68060
+cpu_compatible=false
+cpu_24bit_addressing=false
+cpu_cycle_exact=false
+cpu_speed=max
+cachesize=0
+
+; ---- memory: 2 MB chip, 256 MB Zorro III fast (the game wants ~50 MB) ----
+chipmem_size=4
+fastmem_size=0
+bogomem_size=0
+z3mem_size=256
+z3mapping=real
+
+; ---- RTG: UAE Zorro III board (uaegfx, Picasso96), 32 MB ----
+gfxcard_type=ZorroIII
+gfxcard_size=32
+
+; ---- sound ----
+sound_output=exact
+sound_channels=stereo
+sound_frequency=44100
+sound_interpol=anti
+
+; ---- floppy ----
+nr_floppies=1
+floppy0type=0
+floppy1type=-1
+
+; ---- disks: DH0 = the shared OS 3.2 system, AMIXCOM = ufo\work (binaries + data) ----
+filesystem2=rw,DH0:System:C:\amiga-dev\winuae\System,0
+uaehf0=dir,rw,DH0:System:C:\amiga-dev\winuae\System,0
+filesystem2=rw,AMIXCOM:AmiXcom:C:\Workprojects\AmigaGAMES\ufo\work,-128
+uaehf1=dir,rw,AMIXCOM:AmiXcom:C:\Workprojects\AmigaGAMES\ufo\work,-128
+; WOW = empty folder: S:User-Startup checks WOW:autorun before it starts AmiAgent
+; (without it the boot stops on a "Please insert volume WOW" requester)
+filesystem2=ro,WOW:WOW:C:\amiga-dev\winuae\empty_wow,-128
+uaehf2=dir,ro,WOW:WOW:C:\amiga-dev\winuae\empty_wow,-128
+
+; ---- display (window on the PC) ----
+gfx_width_windowed=1024
+gfx_height_windowed=768
+gfx_fullscreen_amiga=false
+gfx_fullscreen_picasso=false
+
+; ---- input ----
+joyport0=mouse
+
+; ---- network: bsdsocket.library emulated with the PC network (for AmiAgent) ----
+bsdsocket_emu=true
