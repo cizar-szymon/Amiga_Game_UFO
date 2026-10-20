@@ -1577,6 +1577,8 @@ int amigagfx_open(int w, int h, int show_bar, int backend)
 	return 0;
 }
 
+static void dbuf_free(void);
+
 void amigagfx_close(void)
 {
 	wb_pointer_free();
@@ -1594,6 +1596,7 @@ void amigagfx_close(void)
 	g_win_direct = 0;
 	g_win_bl = g_win_bt = 0;
 	if (g_window != NULL) { CloseWindow(g_window); g_window = NULL; }
+	dbuf_free();   /* and the next screen may try again */
 	if (g_screen != NULL) { CloseScreen(g_screen); g_screen = NULL; }
 	/* Chip RAM only ever exists on the AGA path; on RTG g_chip stays NULL and
 	 * this is a no-op, which is exactly the point - the card owns the display
@@ -1967,6 +1970,153 @@ static void rtg_blit_wlut(int x, int y, int w, int h)
 	                   (UBYTE)CTABFMT_XRGB8);
 }
 
+/* ---- display layer (sdlmini's VRAM layer frames) ---------------------------
+ * For a frame whose picture is the last one moved by (dx,dy) plus some
+ * rectangles - the battlescape scrolling - sdlmini moves what the display
+ * already shows with the card's blitter and writes only the rest into display
+ * memory, instead of copying the whole chunky buffer over. RTG with the locked
+ * route only. The LOCKING DISCIPLINE of rtg_blit_locked holds for the caller of
+ * amigagfx_display_lock as well: compute everything first, then lock, write,
+ * unlock - no graphics or Intuition calls in between. */
+int amigagfx_display_layer_ok(void)
+{
+	return g_screen != NULL && !g_win_mode && g_backend == AMIGAGFX_BACKEND_RTG &&
+	       g_rtg_method == RTG_METHOD_LOCK && g_pitch == g_width;
+}
+
+/* Double buffering for the layer frames. Moving the shown picture in place
+ * lets the display show the in-between state for a moment - the HUD dragged
+ * along with the map until it is drawn again, visible as flicker on the
+ * button panel. So the frame is made in a bitmap off the screen: the move
+ * goes from the shown picture into it, the rest is written there, and one
+ * blit of the whole game area puts the finished frame on the screen.
+ * ChangeScreenBuffer would save that last blit, but on the Warp it waits for
+ * the display's vertical blank: ~5 ms a frame against ~0.5 ms for the blit
+ * (measured 2026-10-20). The bitmap is a friend of the screen's, so it lives
+ * on the card; allocated on the first layer frame. */
+static struct BitMap *g_offbm;
+static int g_offbm_failed;
+static struct BitMap *g_dtarget;    /* where the layer frame writes; NULL = the shown bitmap */
+
+static int offbm_ready(void)
+{
+	struct BitMap *scr;
+	if (g_offbm != NULL) return 1;
+	if (g_offbm_failed) return 0;
+	scr = g_screen->RastPort.BitMap;
+	g_offbm = AllocBitMap(GetBitMapAttr(scr, BMA_WIDTH), GetBitMapAttr(scr, BMA_HEIGHT),
+	                      GetBitMapAttr(scr, BMA_DEPTH), BMF_MINPLANES, scr);
+	if (g_offbm == NULL) {
+		g_offbm_failed = 1;
+		amigagfx_log("RTG: no off-screen bitmap - layer frames move the shown picture in place");
+		return 0;
+	}
+	amigagfx_log("RTG: layer frames made off screen");
+	return 1;
+}
+
+/* before CloseScreen */
+static void dbuf_free(void)
+{
+	g_offbm_failed = 0;
+	g_dtarget = NULL;
+	if (g_offbm == NULL) return;
+	WaitBlit();
+	FreeBitMap(g_offbm);
+	g_offbm = NULL;
+}
+
+/* Move the game-area rectangle (x,y,w,h) of the display by (dx,dy); the
+ * destination must lie inside the game area. With the off-screen bitmap the
+ * move goes there, and the layer frame's writes after it go there too until
+ * amigagfx_display_present. Returns 0 when not on a layer-capable display. */
+int amigagfx_display_scroll(int x, int y, int w, int h, int dx, int dy)
+{
+	struct BitMap *src;
+	if (!amigagfx_display_layer_ok() || w <= 0 || h <= 0) return 0;
+	src = g_screen->RastPort.BitMap;
+	if (offbm_ready()) g_dtarget = g_offbm;
+	BltBitMap(src, (WORD)x, (WORD)(y + g_yoff),
+	          g_dtarget != NULL ? g_dtarget : src, (WORD)(x + dx), (WORD)(y + dy + g_yoff),
+	          (WORD)w, (WORD)h, 0xC0, 0xFF, NULL);
+	/* The card's blitter may still be moving pixels when BltBitMap returns;
+	 * the caller writes into the same area next. Picasso96 makes WaitBlit
+	 * wait for the board's blitter too. */
+	WaitBlit();
+	return 1;
+}
+
+/* The layer frame was given up after the move: the screen keeps what it had. */
+void amigagfx_display_cancel(void)
+{
+	g_dtarget = NULL;
+}
+
+/* After the layer frame's writes: the finished frame onto the screen. */
+void amigagfx_display_present(void)
+{
+	struct BitMap *back = g_dtarget;
+	if (back == NULL) return;
+	g_dtarget = NULL;
+	BltBitMap(back, 0, (WORD)g_yoff, g_screen->RastPort.BitMap, 0, (WORD)g_yoff,
+	          (WORD)g_width, (WORD)g_height, 0xC0, 0xFF, NULL);
+	WaitBlit();
+}
+
+static void *display_lock_bm(struct BitMap *bm, unsigned char **base, long *bpr);
+
+/* Lock the bitmap the layer frame writes (the hidden one after a move with
+ * two buffers, else the shown one): the game area's first pixel and the row
+ * pitch. Returns the lock handle, NULL when it cannot be used (then nothing
+ * is held). */
+void *amigagfx_display_lock(unsigned char **base, long *bpr)
+{
+	if (!amigagfx_display_layer_ok()) return NULL;
+	return display_lock_bm(g_dtarget != NULL ? g_dtarget : g_screen->RastPort.BitMap, base, bpr);
+}
+
+static void *display_lock_bm(struct BitMap *bm, unsigned char **base, long *bpr)
+{
+	APTR handle;
+	APTR b = NULL;
+	ULONG r = 0, depth = 0, pixfmt = (ULONG)~0;
+	struct TagItem tags[5];
+	tags[0].ti_Tag = LBMI_BASEADDRESS; tags[0].ti_Data = (ULONG)&b;
+	tags[1].ti_Tag = LBMI_BYTESPERROW; tags[1].ti_Data = (ULONG)&r;
+	tags[2].ti_Tag = LBMI_DEPTH;       tags[2].ti_Data = (ULONG)&depth;
+	tags[3].ti_Tag = LBMI_PIXFMT;      tags[3].ti_Data = (ULONG)&pixfmt;
+	tags[4].ti_Tag = TAG_DONE;         tags[4].ti_Data = 0;
+	handle = LockBitMapTagList((APTR)bm, tags);
+	if (handle == NULL) return NULL;
+	if (b == NULL || depth != 8UL || pixfmt != PIXFMT_LUT8 || r < (ULONG)g_width) {
+		UnLockBitMap(handle);
+		return NULL;
+	}
+	*base = (unsigned char *)b + (ULONG)g_yoff * r;
+	*bpr = (long)r;
+	return handle;
+}
+
+void amigagfx_display_unlock(void *handle)
+{
+	if (handle != NULL) UnLockBitMap((APTR)handle);
+}
+
+/* The game area as the display shows it, into dst (pitch bytes a row).
+ * Returns 0 when it cannot be read. */
+int amigagfx_display_read(unsigned char *dst, long pitch)
+{
+	unsigned char *base;
+	long bpr, y;
+	void *h;
+	if (!amigagfx_display_layer_ok()) return 0;
+	h = display_lock_bm(g_screen->RastPort.BitMap, &base, &bpr);   /* the shown one */
+	if (h == NULL) return 0;
+	for (y = 0; y < g_height; y++) memcpy(dst + y * pitch, base + y * bpr, (size_t)g_width);
+	amigagfx_display_unlock(h);
+	return 1;
+}
+
 /* EHB blit: six bitplanes through Kalms' stock c2p1x1_6_c5_bm_040.
  *
  * That routine takes no chunky ROWMOD - unlike the 8-plane c2p_rect, which is
@@ -2145,11 +2295,32 @@ void amigagfx_blit(int x, int y, int w, int h)
 	}
 }
 
+/* libnix calls __chkabort() from its stdio functions, and the stock one ends
+ * the program on a pending Ctrl-C ("***Break") right there: no screen closed,
+ * the C++ objects torn down in the middle of a frame. On a Warp 060 that left
+ * the game's screen open with the program gone, and once a "corrupt memory
+ * list in FreeMem" (81000005) Guru (2026-10-20). This one does nothing; the
+ * break is taken in amigagfx_poll and ends the game the ordinary way. */
+void __chkabort(void)
+{
+}
+
 int amigagfx_poll(AmigaGfxEvent *ev)
 {
 	struct IntuiMessage *msg;
 
 	ev->type = AMIGAGFX_EV_NONE;
+
+	/* Ctrl-C (a Shell's break, or AmiAgent's stop) is a request to quit like
+	 * the window's close: libnix's own check would end the program inside
+	 * whatever stdio call came next, mid-frame, with the screen still open -
+	 * see __chkabort below. */
+	if (SetSignal(0L, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C) {
+		ev->type = AMIGAGFX_EV_QUIT;
+		ev->x = ev->y = 0;
+		ev->code = 0;
+		return 1;
+	}
 	if (g_window == NULL) return 0;
 
 	msg = (struct IntuiMessage *)GetMsg(g_window->UserPort);

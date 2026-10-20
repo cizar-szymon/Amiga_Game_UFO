@@ -62,10 +62,18 @@ void amiga_copy_push(const void *p, long pitch, long w, long h)
 		CacheClearE((APTR)p, (ULONG)(pitch * (h - 1) + w), CACRF_ClearD);
 }
 
+static int s_nopush;   /* amiga_copy_nopush: the caller pushed everything already */
+
+void amiga_copy_nopush(int on)
+{
+	s_nopush = on;
+}
+
 static void copy_rows(void *dst, long dpitch, const void *src, long spitch, long w, long h, int push)
 {
 	unsigned char *d = (unsigned char *)dst;
 	const unsigned char *s = (const unsigned char *)src;
+	if (s_nopush) push = 0;
 	long y;
 
 	if (w <= 0 || h <= 0) return;
@@ -114,4 +122,92 @@ void amiga_copy_rows(void *dst, long dpitch, const void *src, long spitch, long 
 void amiga_copy_rows_pushed(void *dst, long dpitch, const void *src, long spitch, long w, long h)
 {
 	copy_rows(dst, dpitch, src, spitch, w, h, 0);
+}
+
+/* n lines of 16 bytes, both pointers 16-aligned, from the LAST line down -
+ * for an overlapping move to a higher address */
+static void move16_lines_down(void *dst, const void *src, unsigned long n)
+{
+	register const void *a0 __asm("a0") = (const unsigned char *)src + ((n - 1) << 4);
+	register void *a1 __asm("a1") = (unsigned char *)dst + ((n - 1) << 4);
+	register unsigned long d0 __asm("d0") = n;
+	__asm__ volatile (
+		"1:\n\t"
+		".word 0xf620,0x9000\n\t"   /* move16 (a0)+,(a1)+ */
+		"lea -32(%0),%0\n\t"
+		"lea -32(%1),%1\n\t"
+		"subq.l #1,%2\n\t"
+		"bne.s 1b"
+		: "+a" (a0), "+a" (a1), "+d" (d0) : : "cc", "memory");
+}
+
+/* memmove for big overlapping blocks (the battlescape scroll shifts a whole
+ * 640x400 picture inside its own buffer). libnix's memmove copies an
+ * overlapping block upwards byte by byte. Here: MOVE16 when the distance is a
+ * multiple of 16 (every vertical scroll step - rows are 640 bytes), else
+ * longwords with the destination aligned (the 68020+ reads the unaligned
+ * source itself). Each unit is read before it is written and the copy runs
+ * away from the overlap, so any distance is safe. */
+void amiga_move(void *dst, const void *src, unsigned long n)
+{
+	unsigned char *d = (unsigned char *)dst;
+	const unsigned char *s = (const unsigned char *)src;
+
+	if (n == 0 || d == s) return;
+	if (d + n <= s || s + n <= d) {               /* no overlap */
+		memcpy(d, s, n);
+		return;
+	}
+	if (d < s) {                                  /* downwards: from the start */
+		unsigned long dist = (unsigned long)(s - d);
+		if ((dist & 15) == 0 && n >= 64 && amiga_copy_move16()) {
+			unsigned long head = (16 - ((unsigned long)d & 15)) & 15, lines;
+			CacheClearE((APTR)d, (ULONG)(dist + n), CACRF_ClearD);
+			while (head--) { *d++ = *s++; n--; }
+			lines = n >> 4;
+			move16_lines(d, s, lines);
+			d += lines << 4; s += lines << 4; n &= 15;
+			while (n--) *d++ = *s++;
+			return;
+		}
+		while (n && ((unsigned long)d & 3)) { *d++ = *s++; n--; }
+		{
+			ULONG *dl = (ULONG *)d;
+			const ULONG *sl = (const ULONG *)s;
+			unsigned long k = n >> 4;
+			while (k--) { dl[0] = sl[0]; dl[1] = sl[1]; dl[2] = sl[2]; dl[3] = sl[3]; dl += 4; sl += 4; }
+			k = (n >> 2) & 3;
+			while (k--) *dl++ = *sl++;
+			d = (unsigned char *)dl; s = (const unsigned char *)sl; n &= 3;
+		}
+		while (n--) *d++ = *s++;
+		return;
+	}
+	/* upwards: from the end */
+	{
+		unsigned long dist = (unsigned long)(d - s);
+		unsigned char *de = d + n;
+		const unsigned char *se = s + n;
+		if ((dist & 15) == 0 && n >= 64 && amiga_copy_move16()) {
+			unsigned long tail = (unsigned long)de & 15, lines;
+			CacheClearE((APTR)s, (ULONG)(dist + n), CACRF_ClearD);
+			while (tail--) { *--de = *--se; n--; }
+			lines = n >> 4;
+			move16_lines_down(de - (lines << 4), se - (lines << 4), lines);
+			de -= lines << 4; se -= lines << 4; n &= 15;
+			while (n--) *--de = *--se;
+			return;
+		}
+		while (n && ((unsigned long)de & 3)) { *--de = *--se; n--; }
+		{
+			ULONG *dl = (ULONG *)de;
+			const ULONG *sl = (const ULONG *)se;
+			unsigned long k = n >> 4;
+			while (k--) { dl -= 4; sl -= 4; dl[3] = sl[3]; dl[2] = sl[2]; dl[1] = sl[1]; dl[0] = sl[0]; }
+			k = (n >> 2) & 3;
+			while (k--) *--dl = *--sl;
+			de = (unsigned char *)dl; se = (const unsigned char *)sl; n &= 3;
+		}
+		while (n--) *--de = *--se;
+	}
 }

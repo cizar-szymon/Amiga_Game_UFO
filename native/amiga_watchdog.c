@@ -31,6 +31,7 @@
 #include <dos/dostags.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "amiga_watchdog.h"
@@ -222,7 +223,12 @@ void amiga_watchdog_start(void)
 	                       TAG_END)) {
 		if (dir) UnLock(dir);
 		s_started = 0;
+		return;
 	}
+	/* Any exit() that does not pass SDL_Quit - libnix's Ctrl-C "***Break"
+	 * did exactly that - must not leave this process running in the freed
+	 * program: it crashed later with an illegal instruction (2026-10-20). */
+	atexit(amiga_watchdog_stop);
 }
 
 void amiga_watchdog_stop(void)

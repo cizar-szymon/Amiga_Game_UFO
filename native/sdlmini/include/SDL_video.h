@@ -141,6 +141,18 @@ static __inline__ void SDLmini_Written(SDL_Surface *s)
 	s->amgen = ++SDLmini_Gen;
 }
 
+/* AMIGA-PORT: VRAM layer frames (sdlmini_video.c). A full-screen surface that
+ * says how its picture changed - moved by (dx,dy), these rectangles redrawn,
+ * or changed throughout - lets the frame that shows it scroll the display with
+ * the card's blitter and send only the rest. LayerDone after its last write
+ * of the frame; any write it did not report makes the next frame an ordinary
+ * one. */
+extern void SDLmini_LayerScroll(SDL_Surface *s, int dx, int dy);
+extern void SDLmini_LayerDamage(SDL_Surface *s, int x, int y, int w, int h);
+extern void SDLmini_LayerFull(SDL_Surface *s);
+extern void SDLmini_LayerDone(SDL_Surface *s);
+extern int SDLmini_VramLayer;
+
 /** @name SDL_Surface Flags
  *  These are the currently supported flags for the SDL_surface
  */

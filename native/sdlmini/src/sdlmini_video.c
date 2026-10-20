@@ -618,7 +618,73 @@ static int fill_elided_by_next(int i)
 	return b->key == 0 || b->key == (0x80000000UL | (f->key & 0xff));
 }
 
+/* ---- direct frames ---------------------------------------------------------
+ * While much of the picture changes every frame - the battlescape scrolling,
+ * 25-85% of the diff-copy's cells at 640x400 depending on how much of the map
+ * is still black - composing into the back buffer and diff-copying it onto the
+ * screen cost ~7 + ~5 ms on a Warp 060, to save sending the unchanged part to
+ * the display (the whole screen: ~4.5 ms). After a diff-copy that found more
+ * than a tenth of the cells changed, the next 7 frames run the queue straight
+ * onto the screen instead (s_direct_run), and the whole screen goes to the
+ * display. That needs a queue that paints
+ * every pixel itself - it starts with a fill of the whole back buffer, as
+ * every frame does (Game::run clears it) - and leaves the back buffer behind:
+ * s_back_stale. Whatever uses it before the next full run gets the screen's
+ * picture copied back first (back_restore): a flush with nothing queued (a
+ * direct write to it or a read), the screen being written behind the
+ * diff-copy's back, a new video mode. A partial frame runs the whole queue
+ * clipped to its rectangles, so those come out right in a stale buffer too.
+ * Verify mode (amigaFrameSkip 2) also runs the queue onto the back buffer
+ * and compares the two ("fskip: VERIFY MISMATCH ... direct"). */
+static int s_back_stale;
+static unsigned long s_perf_fdirect;
+static int s_diff_whole;   /* flips left that copy everything without comparing (blit8) */
+static int s_direct_run;   /* direct frames left before the next compared one */
+
+/* After a VRAM layer frame (below) the screen buffer is behind the display as
+ * well: whatever needs it gets the display read back first (~5 ms at
+ * 640x400 on a Warp 060). */
+static int s_screen_stale;
+
+static void screen_restore(void)
+{
+	if (!s_screen_stale) return;
+	s_screen_stale = 0;
+	if (s_screen == NULL) return;
+	if (!amigagfx_display_read((unsigned char *)s_screen->pixels, s_screen->pitch)) {
+		/* unreadable: the next frame is drawn and sent in full */
+		dirty_add(0, 0, s_screen->w, s_screen->h);
+		s_qprevn = -1;
+	}
+}
+
+static void back_restore(void)
+{
+	if (!s_back_stale) return;
+	screen_restore();
+	s_back_stale = 0;
+	if (s_back == NULL || s_screen == NULL || s_back->w != s_screen->w || s_back->h != s_screen->h) return;
+	amiga_copy_rows(s_back->pixels, s_back->pitch, s_screen->pixels, s_screen->pitch, s_back->w, s_back->h);
+}
+
+/* does the queue begin by painting all of the back buffer? */
+static int queue_paints_all(void)
+{
+	return s_qn > 0 && s_q[0].src == NULL && s_q[0].dr.x == 0 && s_q[0].dr.y == 0 &&
+	       s_q[0].dr.w == s_back->w && s_q[0].dr.h == s_back->h;
+}
+
+static void skip_run_ops(void);
 static void skip_run(void)
+{
+	if (s_back_stale) {
+		if (queue_paints_all()) s_back_stale = 0;   /* repaints all of it */
+		else back_restore();
+	}
+	skip_run_ops();
+}
+
+static void skip_run_ops(void)
 {
 	int i;
 	s_qflushing = 1;
@@ -645,6 +711,7 @@ void SDLmini_FlushQueue(void)
 	if (s_qflushing) return;
 	s_qforced = 1;
 	if (s_qn > 0) skip_run();
+	else back_restore();   /* nothing queued: whoever flushes wants the buffer as shown */
 }
 
 static int skip_queueing(SDL_Surface *dst)
@@ -677,14 +744,32 @@ static void skip_reading(SDL_Surface *s)
 /* A surface is going away. */
 static void skip_forget(SDL_Surface *s)
 {
+	if (s == s_back) {
+		/* The back buffer itself goes (a new screen size): nothing queued for
+		 * it or owed to it matters any more. Running the queue or putting the
+		 * screen's picture back into it wrote 64000 bytes into memory the
+		 * game had already freed - its Surface frees the pixels first - over
+		 * the heap: the battle's tiles were damaged when a mission started
+		 * after the 320x200 Geoscape had used direct frames (save assert
+		 * "value < 65536", a looping particle list, "corrupt memory list in
+		 * FreeMem"; found with amiga_heapguard.c, 2026-10-20). */
+		s_qn = 0;
+		s_qforced = 1;
+		s_back = NULL;
+		s_qprevn = -1;
+		s_back_stale = 0;
+		return;
+	}
 	if (s->amqueued == SDLmini_QueueSerial) SDLmini_FlushQueue();
-	if (s == s_back) { s_back = NULL; s_qprevn = -1; }
 }
 
 /* The screen was written behind the diff-copy's back (splash, a lock, a fill):
- * the next frame must be drawn and diff-copied in full. */
+ * the next frame must be drawn and diff-copied in full. Called before the
+ * write, so a stale back buffer can still take the picture from the screen. */
 static void skip_invalidate(void)
 {
+	back_restore();
+	screen_restore();
 	s_qprevn = -1;
 }
 
@@ -711,6 +796,13 @@ static SDL_Rect s_dmg[SKIP_RMAX];
 static int s_dmgn;
 static Uint8 *s_verify;                /* verify mode: the partial result */
 static size_t s_verifysz;
+
+static int verify_buf(void)
+{
+	size_t sz = (size_t)s_back->pitch * (size_t)s_back->h;
+	if (s_verifysz < sz) { free(s_verify); s_verify = (Uint8 *)malloc(sz); s_verifysz = s_verify ? sz : 0; }
+	return s_verify != NULL;
+}
 static unsigned long s_perf_fpart, s_perf_fpartpx;
 
 static int ops_same_shape(const SkipOp *a, const SkipOp *b)
@@ -819,15 +911,233 @@ static void damage_to_screen(void)
 	}
 }
 
+/* checksum of the back buffer's picture - taken from the screen while the
+ * back buffer is stale after a direct frame */
 static Uint32 back_sum(void)
 {
+	const SDL_Surface *s = s_back_stale ? s_screen : s_back;
 	Uint32 sum = 0;
 	int x, y;
 	for (y = 0; y < s_back->h; y++) {
-		const Uint32 *p = (const Uint32 *)((const Uint8 *)s_back->pixels + (size_t)y * s_back->pitch);
+		const Uint32 *p = (const Uint32 *)((const Uint8 *)s->pixels + (size_t)y * s->pitch);
 		for (x = 0; x < s_back->w / 4; x++) sum = ((sum << 1) | (sum >> 31)) ^ p[x];
 	}
 	return sum;
+}
+
+/* ---- VRAM layer frames -----------------------------------------------------
+ * The battlescape scrolling at 640x400 on a Warp 060, after the direct frames
+ * above: the map picture onto the screen buffer ~9 ms, the screen buffer to
+ * the display ~6 ms - for a picture that is the last one moved by a few
+ * pixels. The display already shows that picture. So when the frame is
+ *     fill of the whole screen + the layer surface over all of it (elided:
+ *     a plain copy) + anything else (the HUD, the pointer),
+ * the last frame was made the same way, and the layer reported every change
+ * since (SDLmini_Layer*: moved by dx,dy; these rectangles redrawn), the
+ * display is moved with the card's blitter (BltBitMap, ~0.5 ms), and only
+ *     the strips the move exposed, the reported rectangles, and the last
+ *     frame's other operations' rectangles moved along (the HUD pixels the
+ *     blitter dragged with the map)
+ * are copied from the layer into display memory; then the other operations
+ * run straight onto the display. The screen and back buffers are left behind
+ * (s_screen_stale, s_back_stale) and read back from the display when anything
+ * needs them (screen_restore). Verify mode composes every such frame the
+ * ordinary way as well and compares it with the display read back. */
+int SDLmini_VramLayer = 1;
+static SDL_Surface *s_layer;
+static int s_layer_dx, s_layer_dy, s_layer_full = 1;
+#define LAYER_RMAX 8
+static SDL_Rect s_layer_dmg[LAYER_RMAX];
+static int s_layer_ndmg;
+static Uint32 s_layer_gen;
+static unsigned long s_perf_flayer;
+
+static void layer_reset(void)
+{
+	s_layer_dx = s_layer_dy = 0;
+	s_layer_full = 0;
+	s_layer_ndmg = 0;
+}
+
+static int layer_is(SDL_Surface *s)
+{
+	if (s != s_layer) {               /* a new layer: nothing known about it yet */
+		s_layer = s;
+		layer_reset();
+		s_layer_full = 1;
+		return 0;
+	}
+	return 1;
+}
+
+void SDLmini_LayerScroll(SDL_Surface *s, int dx, int dy)
+{
+	int i;
+	if (!layer_is(s)) return;
+	s_layer_dx += dx;
+	s_layer_dy += dy;
+	for (i = 0; i < s_layer_ndmg; i++) {      /* earlier damage moved with the picture */
+		s_layer_dmg[i].x = (Sint16)(s_layer_dmg[i].x + dx);
+		s_layer_dmg[i].y = (Sint16)(s_layer_dmg[i].y + dy);
+	}
+}
+
+void SDLmini_LayerDamage(SDL_Surface *s, int x, int y, int w, int h)
+{
+	SDL_Rect r;
+	if (!layer_is(s) || w <= 0 || h <= 0) return;
+	r.x = (Sint16)x; r.y = (Sint16)y; r.w = (Uint16)w; r.h = (Uint16)h;
+	if (s_layer_ndmg < LAYER_RMAX) { s_layer_dmg[s_layer_ndmg++] = r; return; }
+	rect_union(&s_layer_dmg[LAYER_RMAX - 1], &r);
+}
+
+void SDLmini_LayerFull(SDL_Surface *s)
+{
+	layer_is(s);
+	s_layer_full = 1;
+}
+
+void SDLmini_LayerDone(SDL_Surface *s)
+{
+	layer_is(s);
+	s_layer_gen = s->amgen;
+}
+
+/* add r, clipped to w x h, to the repair list */
+static int layer_add(SDL_Rect *list, int n, int max, int x, int y, int w, int h, int sw, int sh)
+{
+	int x1 = x + w, y1 = y + h;
+	if (x < 0) x = 0;
+	if (y < 0) y = 0;
+	if (x1 > sw) x1 = sw;
+	if (y1 > sh) y1 = sh;
+	if (x1 <= x || y1 <= y) return n;
+	if (n == max) {   /* full: grow the last one */
+		SDL_Rect r;
+		r.x = (Sint16)x; r.y = (Sint16)y; r.w = (Uint16)(x1 - x); r.h = (Uint16)(y1 - y);
+		rect_union(&list[max - 1], &r);
+		return n;
+	}
+	list[n].x = (Sint16)x; list[n].y = (Sint16)y; list[n].w = (Uint16)(x1 - x); list[n].h = (Uint16)(y1 - y);
+	return n + 1;
+}
+
+/* The frame end as a layer frame, if it can be one. Returns 1 when done. */
+static int layer_frame(void)
+{
+	SDL_Surface *L;
+	int w, h, dx, dy, i, n = 0;
+	SDL_Rect rep[SKIP_QMAX / 4];
+	unsigned char *base;
+	long bpr;
+	void *lock;
+	SDL_Surface D;
+
+	if (!SDLmini_VramLayer || s_layer == NULL || s_layer_full || s_qforced) return 0;
+	if (s_qn < 2 || !queue_paints_all() || !fill_elided_by_next(0)) return 0;
+	L = s_q[1].src;
+	w = s_back->w; h = s_back->h;
+	if (L != s_layer || L->amgen != s_layer_gen) return 0;   /* a change it did not report */
+	if (s_q[1].sr.x != 0 || s_q[1].sr.y != 0 || s_q[1].sr.w != w || s_q[1].sr.h != h || L->w != w || L->h != h) return 0;
+	if (s_screen == NULL || s_screen->w != w || s_screen->h != h || !amigagfx_display_layer_ok()) return 0;
+	/* the display shows the last frame, made the same way */
+	if (s_qprevn < 2 || s_qprev[0].src != NULL || s_qprev[0].key != s_q[0].key ||
+	    !ops_same_shape(&s_qprev[1], &s_q[1])) return 0;
+	dx = s_layer_dx; dy = s_layer_dy;
+	if (dx >= w / 2 || -dx >= w / 2 || dy >= h / 2 || -dy >= h / 2) return 0;
+
+	/* what has to come from the layer */
+	if (dx > 0) n = layer_add(rep, n, SKIP_QMAX / 4, 0, 0, dx, h, w, h);
+	if (dx < 0) n = layer_add(rep, n, SKIP_QMAX / 4, w + dx, 0, -dx, h, w, h);
+	if (dy > 0) n = layer_add(rep, n, SKIP_QMAX / 4, 0, 0, w, dy, w, h);
+	if (dy < 0) n = layer_add(rep, n, SKIP_QMAX / 4, 0, h + dy, w, -dy, w, h);
+	for (i = 0; i < s_layer_ndmg; i++)
+		n = layer_add(rep, n, SKIP_QMAX / 4, s_layer_dmg[i].x, s_layer_dmg[i].y, s_layer_dmg[i].w, s_layer_dmg[i].h, w, h);
+	for (i = 2; i < s_qprevn; i++)
+		n = layer_add(rep, n, SKIP_QMAX / 4, s_qprev[i].dr.x + dx, s_qprev[i].dr.y + dy, s_qprev[i].dr.w, s_qprev[i].dr.h, w, h);
+
+	/* everything the copies below read by MOVE16 goes out of the cache
+	 * first: no OS calls under the display lock */
+	amiga_copy_push(L->pixels, L->pitch, w, h);
+	for (i = 2; i < s_qn; i++)
+		if (s_q[i].src != NULL)
+			amiga_copy_push((const Uint8 *)s_q[i].src->pixels + (size_t)s_q[i].sr.y * s_q[i].src->pitch + s_q[i].sr.x,
+			                s_q[i].src->pitch, s_q[i].sr.w, s_q[i].sr.h);
+
+	if (dx != 0 || dy != 0)
+		amigagfx_display_scroll(dx > 0 ? 0 : -dx, dy > 0 ? 0 : -dy, w - (dx > 0 ? dx : -dx), h - (dy > 0 ? dy : -dy), dx, dy);
+
+	lock = amigagfx_display_lock(&base, &bpr);
+	if (lock == NULL) {
+		/* the display moved but cannot be written: send it all the usual way */
+		amigagfx_display_cancel();
+		dirty_add(0, 0, w, h);
+		s_qprevn = -1;
+		return 0;
+	}
+	/* ---- display locked: copies only ---- */
+	amiga_copy_nopush(1);
+	for (i = 0; i < n; i++)
+		amiga_copy_rows(base + (size_t)rep[i].y * bpr + rep[i].x, bpr,
+		                (const Uint8 *)L->pixels + (size_t)rep[i].y * L->pitch + rep[i].x, L->pitch,
+		                rep[i].w, rep[i].h);
+	memset(&D, 0, sizeof D);
+	D.format = s_screen->format;
+	D.w = w; D.h = h; D.pitch = (Uint16)bpr; D.pixels = base;
+	D.clip_rect.w = (Uint16)w; D.clip_rect.h = (Uint16)h;
+	s_qflushing = 1;
+	for (i = 2; i < s_qn; i++) {
+		SkipOp *o = &s_q[i];
+		if (o->src == NULL) SDL_FillRect_(&D, &o->dr, o->key);
+		else blit8(o->src, &o->sr, &D, &o->dr);
+	}
+	s_qflushing = 0;
+	amiga_copy_nopush(0);
+	amigagfx_display_unlock(lock);
+	/* ---- unlocked ---- */
+	amigagfx_display_present();   /* two buffers: show the finished frame */
+
+	memcpy(s_qprev, s_q, (size_t)s_qn * sizeof(SkipOp));
+	s_qprevn = s_qn;
+	s_screen_stale = 1;
+	s_back_stale = 1;
+	s_perf_flayer++;
+	if (SDLmini_FrameSkip == 2 && verify_buf()) {
+		/* verify: the frame the ordinary way, against the display */
+		int y;
+		s_qn = s_qprevn;
+		s_back_stale = 0;
+		s_noelide = 1;
+		skip_run_ops();
+		s_noelide = 0;
+		if (amigagfx_display_read(s_verify, s_back->pitch)) {
+			long bad = 0;
+			int x, bx0 = w, by0 = h, bx1 = -1, by1 = -1;
+			for (y = 0; y < h; y++) {
+				const Uint8 *a = s_verify + (size_t)y * s_back->pitch, *b2 = (const Uint8 *)s_back->pixels + (size_t)y * s_back->pitch;
+				if (memcmp(a, b2, (size_t)w) == 0) continue;
+				for (x = 0; x < w; x++)
+					if (a[x] != b2[x]) {
+						bad++;
+						if (x < bx0) bx0 = x;
+						if (x > bx1) bx1 = x;
+						if (y < by0) by0 = y;
+						if (y > by1) by1 = y;
+					}
+			}
+			if (bad) {
+				s_perf_fverr++;
+				if (s_perf_fverr <= 40) {
+					char b[160];
+					snprintf(b, sizeof b, "fskip: VERIFY MISMATCH #%lu: layer frame, %ld px in %d,%d-%d,%d, scroll %d,%d, %d repairs, %d dmg",
+					         s_perf_fverr, bad, bx0, by0, bx1, by1, dx, dy, n, s_layer_ndmg);
+					SDLmini_Log(b);
+				}
+			}
+		}
+	}
+	s_qn = 0;
+	return 1;
 }
 
 /* Screen::flip is about to diff-copy `back` onto the screen. Returns 1 when
@@ -852,9 +1162,14 @@ static int skip_frame_end(SDL_Surface *back)
 	if (same && SDLmini_FrameSkip == 1) {
 		s_qn = 0;
 		s_perf_fskip++;
-		skip_next_frame();
+				skip_next_frame();
 		return 1;
 	}
+	if (!same && layer_frame()) {
+				skip_next_frame();
+		return 1;
+	}
+	screen_restore();   /* everything below works on the screen buffer */
 	if (!same && !s_qforced && s_qprevn == s_qn && damage_collect() > 0) {
 		/* only some sources changed: redraw just their rectangles - unless
 		 * they cover most of the frame, where one full pass is cheaper */
@@ -869,9 +1184,25 @@ static int skip_frame_end(SDL_Surface *back)
 				/* verify: keep the partial result, draw the whole frame
 				 * again, and compare - then go on as a normal frame */
 				size_t sz = (size_t)s_back->pitch * (size_t)s_back->h;
-				if (s_verifysz < sz) { free(s_verify); s_verify = (Uint8 *)malloc(sz); s_verifysz = s_verify ? sz : 0; }
-				if (s_verify != NULL) {
-					memcpy(s_verify, s_back->pixels, sz);
+				if (verify_buf()) {
+					if (s_back_stale) {
+						/* after a direct frame the last picture is on the
+						 * screen: it, with the redrawn rectangles on top */
+						int k;
+						amiga_copy_rows(s_verify, s_back->pitch, s_screen->pixels, s_screen->pitch, s_back->w, s_back->h);
+						for (k = 0; k < s_dmgn; k++) {
+							int x0 = s_dmg[k].x < 0 ? 0 : s_dmg[k].x, y0 = s_dmg[k].y < 0 ? 0 : s_dmg[k].y;
+							int x1 = s_dmg[k].x + s_dmg[k].w, y1 = s_dmg[k].y + s_dmg[k].h;
+							if (x1 > s_back->w) x1 = s_back->w;
+							if (y1 > s_back->h) y1 = s_back->h;
+							if (x1 > x0 && y1 > y0)
+								amiga_copy_rows(s_verify + (size_t)y0 * s_back->pitch + x0, s_back->pitch,
+								                (const Uint8 *)s_back->pixels + (size_t)y0 * s_back->pitch + x0, s_back->pitch,
+								                x1 - x0, y1 - y0);
+						}
+					} else {
+						memcpy(s_verify, s_back->pixels, sz);
+					}
 					s_noelide = 1;   /* the reference: every op as asked for */
 					skip_run();
 					s_noelide = 0;
@@ -890,10 +1221,50 @@ static int skip_frame_end(SDL_Surface *back)
 				return 0;            /* the full diff-copy follows */
 			}
 			damage_to_screen();
-			s_qn = 0;
+						s_qn = 0;
 			skip_next_frame();
 			return 1;
 		}
+	}
+	if (!same && !s_qforced && s_direct_run > 0 && queue_paints_all() &&
+	    s_back->w == s_screen->w && s_back->h == s_screen->h && s_back->pitch == s_screen->pitch) {
+		/* a direct frame (see back_restore): the queue paints the screen */
+		void *bp = s_back->pixels;
+		memcpy(s_qprev, s_q, (size_t)s_qn * sizeof(SkipOp));
+		s_qprevn = s_qn;
+		s_back->pixels = s_screen->pixels;
+		skip_run_ops();
+		s_back->pixels = bp;
+		s_direct_run--;
+		dirty_add(0, 0, s_screen->w, s_screen->h);
+		s_perf_fdirect++;
+				s_back_stale = 1;
+		if (SDLmini_FrameSkip == 2 && verify_buf()) {
+			/* verify: the same queue, the ordinary way, into a scratch buffer
+			 * standing in for the back buffer (which stays stale, as in mode 1) */
+			int y;
+			memcpy(s_q, s_qprev, (size_t)s_qprevn * sizeof(SkipOp));
+			s_qn = s_qprevn;
+			s_noelide = 1;
+			s_back->pixels = s_verify;
+			skip_run_ops();
+			s_back->pixels = bp;
+			s_noelide = 0;
+			for (y = 0; y < s_back->h; y++)
+				if (memcmp(s_verify + (size_t)y * s_back->pitch,
+				           (const Uint8 *)s_screen->pixels + (size_t)y * s_screen->pitch, (size_t)s_back->w) != 0) break;
+			if (y < s_back->h) {
+				s_perf_fverr++;
+				if (s_perf_fverr <= 20) {
+					char b[96];
+					snprintf(b, sizeof b, "fskip: VERIFY MISMATCH #%lu: direct frame, row %d, %d ops",
+					         s_perf_fverr, y, s_qprevn);
+					SDLmini_Log(b);
+				}
+			}
+		}
+		skip_next_frame();
+		return 1;
 	}
 	{
 		Uint32 before = same ? back_sum() : 0;   /* verify mode only */
@@ -920,7 +1291,7 @@ static int skip_frame_end(SDL_Surface *back)
 			}
 		}
 	}
-	skip_next_frame();
+		skip_next_frame();
 	return 0;
 }
 
@@ -999,8 +1370,6 @@ static int SDL_FillRect_(SDL_Surface *dst, SDL_Rect *dstrect, Uint32 color)
 	}
 	return 0;
 }
-
-static int s_diff_whole;   /* flips left that copy everything without comparing */
 
 /* Do two cells of the diff-copy below differ? libnix memcmp is a byte loop
  * (move.b/move.b/cmp.b/dbf) behind a call, and the full-screen flip asks it
@@ -1153,6 +1522,7 @@ static void blit8(SDL_Surface *src, const SDL_Rect *srcrect,
 			dp += dst->pitch;
 		}
 		if (changed * 10UL > cells * 9UL) s_diff_whole = 7;
+		if (changed * 10UL > cells) s_direct_run = 7;   /* see back_restore */
 		if (dy0 >= 0)
 			dirty_add(dstrect->x + dx0, dstrect->y + dy0,
 			          dx1 - dx0, dy1 - dy0 + 1);
@@ -1176,7 +1546,9 @@ int SDL_UpperBlit(SDL_Surface *src, SDL_Rect *srcrect, SDL_Surface *dst, SDL_Rec
 	 * complete - compare it with the last one (unchanged-frame skip). */
 	if (dst == s_screen && srcrect == NULL && dstrect == NULL &&
 	    src->w == s_screen->w && src->format->BitsPerPixel == 8) {
-		if (skip_frame_end(src)) return 0;
+		int done_ = skip_frame_end(src);
+		layer_reset();   /* the layer's reports covered this frame; the next start from it */
+		if (done_) return 0;
 	} else {
 		skip_reading(src);
 	}
@@ -1272,6 +1644,7 @@ SDL_Surface *SDL_SetVideoMode(int width, int height, int bpp, Uint32 flags)
 		return NULL;
 	}
 
+	back_restore();   /* a direct frame's picture is in the screen that may go now */
 	if (s_screen != NULL) {
 		/* Reopening the same geometry is what OpenXcom does on every options
 		 * change; there is nothing to do, and reopening the screen would
@@ -1306,6 +1679,7 @@ SDL_Surface *SDL_SetVideoMode(int width, int height, int bpp, Uint32 flags)
 		return NULL;
 	}
 	s_screen->flags |= SDL_HWSURFACE | SDL_FULLSCREEN;
+	s_screen_stale = 0;                           /* a new display: nothing to read back */
 	dirty_add(0, 0, s_screen->w, s_screen->h);   /* fresh screen: convert all */
 	skip_invalidate();                            /* ... and diff-copy all */
 	if (!s_opened_once) {
@@ -1326,9 +1700,12 @@ SDL_Surface *SDL_SetVideoMode(int width, int height, int bpp, Uint32 flags)
 	return s_screen;
 }
 
+extern void amiga_heapguard_check(const char *where);   /* no-op unless AMIGA_HEAPGUARD=1 */
+
 int SDL_Flip(SDL_Surface *screen)
 {
 	SDLMINI_FIRST("SDL_Flip");
+	amiga_heapguard_check("SDL_Flip");
 	/* AMIGA-PORT: keep the streamed music fed. Nothing else in the port
 	 * calls this, and a starved music buffer means silence. */
 	{
@@ -1381,16 +1758,18 @@ int SDL_Flip(SDL_Surface *screen)
 	}
 	/* TEMP perf report, one line per 100 frames (LISTA-ROBOT pkt 1). */
 	if ((SDLmini_flips % 100) == 0) {
-		char b_[224];
+		char b_[288];
 		Uint32 now_ = SDL_GetTicks();
 		snprintf(b_, sizeof b_,
-			"perf: 100 frames in %lu ms: c2p %lu ms (%lu px, %lu skipped), blits ck %lu (%lu px) plain %lu (%lu px diff), fills %lu (%lu px), fskip %lu verr %lu fpart %lu (%lu px)",
+			"perf: 100 frames in %lu ms: c2p %lu ms (%lu px, %lu skipped), blits ck %lu (%lu px) plain %lu (%lu px diff), fills %lu (%lu px), fskip %lu verr %lu fpart %lu (%lu px) fdirect %lu flayer %lu",
 			(unsigned long)(now_ - s_perf_last_ms), s_perf_c2p_ms,
 			s_perf_c2p_px, s_perf_skips,
 			s_perf_blits_ck, s_perf_px_ck, s_perf_blits, s_perf_px,
-			s_perf_fills, s_perf_fill_px, s_perf_fskip, s_perf_fverr, s_perf_fpart, s_perf_fpartpx);
+			s_perf_fills, s_perf_fill_px, s_perf_fskip, s_perf_fverr, s_perf_fpart, s_perf_fpartpx, s_perf_fdirect, s_perf_flayer);
+		s_perf_flayer = 0;
 		s_perf_fskip = 0;   /* per window; verify mismatches stay cumulative */
 		s_perf_fpart = s_perf_fpartpx = 0;
+		s_perf_fdirect = 0;
 		SDLmini_Log(b_);
 		s_perf_last_ms = now_;
 		s_perf_c2p_ms = 0;

@@ -268,6 +268,18 @@ for f in amiga_gfx.c amiga_audio.c amiga_adpcm.c amiga_startup.c amiga_stack.c \
          amiga_music.c amiga_watchdog.c amiga_copy.c; do
 	NATIVE_OBJS="$NATIVE_OBJS $(compile_c "$NATIVE" "$f")"
 done
+# AMIGA_HEAPGUARD=1: the checking allocator instead of libnix's malloc
+# (native/amiga_heapguard.c) - for hunting memory corruption on the real
+# machine. Binaries get a -hg suffix; the normal build links the no-op check.
+if [ "$AMIGA_HEAPGUARD" = "1" ]; then
+	HGSUF="-hg"
+	NATIVE_OBJS="$NATIVE_OBJS $(compile_c "$NATIVE" amiga_heapguard.c)"
+	m68k-amigaos-g++ $CXXFLAGS -c "$NATIVE/amiga_heapguard_new.cpp" -o "$OBJ/amiga_heapguard_new.o"
+	NATIVE_OBJS="$NATIVE_OBJS $OBJ/amiga_heapguard_new.o"
+else
+	HGSUF=""
+	NATIVE_OBJS="$NATIVE_OBJS $(compile_c "$NATIVE" amiga_heapguard_stub.c)"
+fi
 
 log "assembling c2p"
 # Kalms' routines are Motorola syntax, which vasm (shipped with amiga-gcc)
@@ -323,7 +335,7 @@ link_variant() {
 	m68k-amigaos-gcc $CFLAGS -DAMIGA_BACKEND_DEFAULT=$default \
 		-c "$NATIVE/sdlmini/src/sdlmini_backend.c" -o "$OBJ/backend_$name.o"
 
-	m68k-amigaos-g++ $COMMON -o "$WORK/openxcom-$name$FPUSUF$TUNESUF" \
+	m68k-amigaos-g++ $COMMON -o "$WORK/openxcom-$name$FPUSUF$TUNESUF$HGSUF" \
 		$GAME_OBJS $NATIVE_OBJS "$OBJ/backend_$name.o" $YAML_OBJS -lamiga -lm
 
 	# DO NOT STRIP. m68k-amigaos-strip produces a Hunk executable that loads
@@ -333,8 +345,8 @@ link_variant() {
 	# stripped is silent. (The openttd port configures with --disable-strip,
 	# which is the same conclusion reached from the other direction.)
 	# The cost is ~3 MB of symbols in a 15 MB binary; correctness first.
-	cp "$WORK/openxcom-$name$FPUSUF$TUNESUF" "$DEPLOY/openxcom-$name$FPUSUF$TUNESUF"
-	ls -la "$WORK/openxcom-$name$FPUSUF$TUNESUF"
+	cp "$WORK/openxcom-$name$FPUSUF$TUNESUF$HGSUF" "$DEPLOY/openxcom-$name$FPUSUF$TUNESUF$HGSUF"
+	ls -la "$WORK/openxcom-$name$FPUSUF$TUNESUF$HGSUF"
 }
 
 link_variant aga 0     # AGA screen + chunky-to-planar

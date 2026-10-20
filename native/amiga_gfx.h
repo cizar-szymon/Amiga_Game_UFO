@@ -216,6 +216,17 @@ void amigagfx_set_ehb_palette(const unsigned char *rgb64);
  * difference; a full-width rectangle skips the copy entirely. */
 void amigagfx_blit(int x, int y, int w, int h);
 
+/* Display layer (RTG, locked route only): move part of what the display shows
+ * with the card's blitter, write into display memory directly, read it back.
+ * See the comment in amiga_gfx.c. */
+int   amigagfx_display_layer_ok(void);
+int   amigagfx_display_scroll(int x, int y, int w, int h, int dx, int dy);
+void *amigagfx_display_lock(unsigned char **base, long *bpr);
+void  amigagfx_display_unlock(void *handle);
+void  amigagfx_display_present(void);
+void  amigagfx_display_cancel(void);
+int   amigagfx_display_read(unsigned char *dst, long pitch);
+
 /* Milliseconds since program start; OpenTTD's main loop needs a ms clock. */
 unsigned long amigagfx_millis(void);
 

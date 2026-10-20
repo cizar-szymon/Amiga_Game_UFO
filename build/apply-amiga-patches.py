@@ -1066,14 +1066,18 @@ GLOBE_CACHE_NEW = r'''/* AMIGA-PORT: per-cached-polygon view-space normals (Q1.1
  * _cacheLand order; consumed by the flat-shaded drawLand (amigaFlatGlobe). */
 static std::vector<CordFix> s_polyNorm_;
 
+/* AMIGA-PORT (2026-10-20): the copies in the cache are made ONCE, one per
+ * source polygon, and a recache only fills in their screen coordinates and
+ * relinks the list nodes it already has. Upstream deleted every cached
+ * polygon and copied every visible one again - 5 allocations each (object,
+ * lat/lon/x/y arrays) plus a list node, freed again on the next recache:
+ * thousands of malloc/free per redraw, ~115 of the ~150 ms a turned globe
+ * took on a Warp 060 at 320x200. The pool outlives a Globe (the rules'
+ * polygons do too), so ~Globe only unlinks them. */
+static std::vector<Polygon*> s_polyPool_;
+
 void Globe::cache(std::list<Polygon*> *polygons, std::list<Polygon*> *cache)
 {
-	// Clear existing cache
-	for (std::list<Polygon*>::iterator i = cache->begin(); i != cache->end(); ++i)
-	{
-		delete *i;
-	}
-	cache->clear();
 	s_polyNorm_.clear();
 
 	/* AMIGA-PORT pkt 4: the whole recache is integer Q1.14. Vertex sin/cos
@@ -1083,7 +1087,7 @@ void Globe::cache(std::list<Polygon*> *polygons, std::list<Polygon*> *cache)
 	 * quantisation - invisible at 320x200). */
 	static std::vector<Sint16> vt_;
 	static const void *vtSrc_ = 0;
-	if (vtSrc_ != (const void *)polygons)
+	if (vtSrc_ != (const void *)polygons || s_polyPool_.size() != polygons->size())
 	{
 		vt_.clear();
 		for (std::list<Polygon*>::iterator i = polygons->begin(); i != polygons->end(); ++i)
@@ -1095,7 +1099,14 @@ void Globe::cache(std::list<Polygon*> *polygons, std::list<Polygon*> *cache)
 				vt_.push_back((Sint16)floor(cos((*i)->getLongitude(j)) * 16384.0 + 0.5));
 			}
 		vtSrc_ = (const void *)polygons;
+		cache->clear();   /* its nodes point into the pool about to go */
+		for (size_t k_ = 0; k_ < s_polyPool_.size(); ++k_) delete s_polyPool_[k_];
+		s_polyPool_.clear();
+		for (std::list<Polygon*>::iterator i = polygons->begin(); i != polygons->end(); ++i)
+			s_polyPool_.push_back(new Polygon(**i));
 	}
+	std::list<Polygon*>::iterator node_ = cache->begin();   /* reused in order */
+	size_t pi_ = 0;
 	const Sint32 sCLat = (Sint32)floor(sin(_cenLat) * 16384.0 + 0.5);
 	const Sint32 cCLat = (Sint32)floor(cos(_cenLat) * 16384.0 + 0.5);
 	const Sint32 sCLon = (Sint32)floor(sin(_cenLon) * 16384.0 + 0.5);
@@ -1103,7 +1114,7 @@ void Globe::cache(std::list<Polygon*> *polygons, std::list<Polygon*> *cache)
 	const Sint32 radQ = (Sint32)(_radius * 16.0 + 0.5);
 
 	size_t vi = 0;
-	for (std::list<Polygon*>::iterator i = polygons->begin(); i != polygons->end(); ++i)
+	for (std::list<Polygon*>::iterator i = polygons->begin(); i != polygons->end(); ++i, ++pi_)
 	{
 		// Is quad on the back face?
 		Sint32 closest = 0;
@@ -1123,7 +1134,7 @@ void Globe::cache(std::list<Polygon*> *polygons, std::list<Polygon*> *cache)
 		if (-furthest > closest)
 			continue;
 
-		Polygon* p = new Polygon(**i);
+		Polygon* p = s_polyPool_[pi_];
 
 		// Convert coordinates - same projection as polarToCart, in Q1.14
 		size_t vj = vbase;
@@ -1150,8 +1161,10 @@ void Globe::cache(std::list<Polygon*> *polygons, std::list<Polygon*> *cache)
 			s_polyNorm_.push_back(nf_);
 		}
 
-		cache->push_back(p);
+		if (node_ != cache->end()) { *node_ = p; ++node_; }
+		else cache->push_back(p);
 	}
+	cache->erase(node_, cache->end());   /* fewer visible than last time */
 }
 '''
 
@@ -3985,9 +3998,20 @@ def main():
         "\tvoid amigaBulletTiles(int i0, int i1);   /* trail particles i0..i1 -> tiles */\n"
         "\tvoid amigaSeedOtherPhases(int except);\n"
         "\tvoid amigaComposeVisible();\n"
+        "\tvoid amigaVerifyFrame();   /* amigaMapVerify: the cached frame against a full compose */\n"
         "\tint _fcProjIdx;\n"
         "\tint _fcCamX, _fcCamY;   /* scroll shift: camera offset the cached pictures were composed at */\n"
         "\tbool _fcScrollStrip;   /* scroll propagate: copy the repaired strip to the other phases */\n"
+        "\tint _fcOwn;            /* scroll: the map surface IS phase _fcOwn's picture, its _fcPix is stale; -1 none */\n"
+        "\tUint32 _fcOwnGen;      /* the surface's content generation when draw() left it */\n"
+        "\t/* scroll window: while scrolling, the surface's pixels are a window into a\n"
+        "\t * bigger buffer and a scroll step moves the window, not the picture */\n"
+        "\tUint8 *_fcWinMem, *_fcWinBuf;\n"
+        "\tint _fcWinBW, _fcWinBH, _fcWinX, _fcWinY;\n"
+        "\tvoid *_fcWinOrigPix; int _fcWinOrigPitch;\n"
+        "\tbool amigaWinMove(int dx, int dy, const Uint8 *src, int spitch);\n"
+        "\tbool amigaInWin();\n"
+        "\tvoid amigaWinHome();\n"
         "\tint _fcStripX0, _fcStripY0, _fcStripX1, _fcStripY1;   /* union of the exposed strips */\n"
         "\tint _fcProjLx0, _fcProjLy0, _fcProjLx1, _fcProjLy1;   /* last bullet envelope (unused now) */\n"
         "\tunsigned long _fcSig;\n"
@@ -4014,6 +4038,8 @@ def main():
         "\t_fcGridW = _fcGridH = 0;\n"
         "\t_fcCamX = _fcCamY = -100000;\n"
         "\t_fcScrollStrip = false; _fcStripX0 = _fcStripY0 = 0; _fcStripX1 = _fcStripY1 = 0;\n"
+        "\t_fcOwn = -1; _fcOwnGen = 0;\n"
+        "\t_fcWinMem = _fcWinBuf = 0; _fcWinBW = _fcWinBH = _fcWinX = _fcWinY = 0; _fcWinOrigPix = 0; _fcWinOrigPitch = 0;\n"
         "\t_fcProjLx0 = _fcProjLy0 = 0; _fcProjLx1 = _fcProjLy1 = -1;\n"
         "\t_fcProjIdx = -1;\n"
         "\t_fcSig = 0; _fcW = _fcH = 0;\n"
@@ -4314,6 +4340,32 @@ def main():
         "\t\t\t\tfor (int i_ = 0; i_ < 8; ++i_) if (i_ != except)\n"
         "\t\t\t\t\tfor (int dy_ = -1; dy_ <= 1; ++dy_) for (int dx_ = -1; dx_ <= 1; ++dx_) amigaDirtyTileOne(i_, itX + dx_, itY + dy_);\n"
         "\t\t\t}\n"
+        "\t/* the selected unit's arrow bobs with the phase (arrowBob in drawTerrain,\n"
+        "\t * drawn after the tile loop, so no tile of it is animated): without this\n"
+        "\t * every phase showed the arrow where the composed one had it, and it stood\n"
+        "\t * still (found by amigaMapVerify, 2026-10-20) */\n"
+        "\t{\n"
+        "\t\tBattleUnit *su_ = _save->getSelectedUnit();\n"
+        "\t\tif (su_ && (_save->getSide() == FACTION_PLAYER || _save->getDebugMode()) && su_->getPosition().z <= _camera->getViewLevel() && getCursorType() != CT_NONE)\n"
+        "\t\t{\n"
+        "\t\t\tPosition sp_, off_;\n"
+        "\t\t\t_camera->convertMapToScreen(su_->getPosition(), &sp_);\n"
+        "\t\t\tsp_ += _camera->getMapOffset();\n"
+        "\t\t\tcalculateWalkingOffset(su_, &off_);\n"
+        "\t\t\tif (su_->getArmor()->getSize() > 1) off_.y += 4;\n"
+        "\t\t\toff_.y += 24 - su_->getHeight();\n"
+        "\t\t\tif (su_->isKneeled()) off_.y -= 2;\n"
+        "\t\t\tint ax0_ = sp_.x + off_.x + (_spriteWidth / 2) - (_arrow->getWidth() / 2), ay0_ = sp_.y + off_.y - _arrow->getHeight();\n"
+        "\t\t\tint sz_ = su_->getArmor()->getSize();\n"
+        "\t\t\tPosition up_ = su_->getPosition();\n"
+        "\t\t\tfor (int i_ = 0; i_ < 8; ++i_) if (i_ != except)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tfor (int a_ = 0; a_ < sz_; ++a_) for (int b_ = 0; b_ < sz_; ++b_)\n"
+        "\t\t\t\t\tfor (int dy_ = -1; dy_ <= 1; ++dy_) for (int dx_ = -1; dx_ <= 1; ++dx_) amigaDirtyTileOne(i_, up_.x + a_ + dx_, up_.y + b_ + dy_);\n"
+        "\t\t\t\tamigaGrowBox(i_, ax0_, ay0_, ax0_ + _arrow->getWidth(), ay0_ + _arrow->getHeight() + 2);   /* bob 0..2 */\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "\t}\n"
         "\t{\n"
         "\t\tstatic unsigned long sp_n_ = 0;\n"
         "\t\tif (AmigaPerfLog && (sp_n_++ % 10) == 0) { char sb_[96]; snprintf(sb_, sizeof sb_, \"seed: %d animated tiles in view\", nAnim_); SDLmini_Log(sb_); }\n"
@@ -4355,10 +4407,162 @@ def main():
         "\t\t\t}\n"
         "}\n"
         "\n"
+        "/* amigaMapVerify: the picture the cache produced this frame, composed again\n"
+        " * in full from nothing and compared. The cached picture stays on screen, so\n"
+        " * the game behaves as without the check, only slower. */\n"
+        "static int AmigaVerifyNoStore = 0;   /* amigaCacheStore: the check's compose is not stored */\n"
+        "static int amFloorDiv_(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }   /* b > 0 */\n"
+        "\n"
+        "/* Scroll window (2026-10-20). Shifting the scrolled picture inside the\n"
+        " * surface was one full pass over 256 KB per scroll step at 640x400 (~5.5 ms\n"
+        " * on a Warp 060). Instead the surface's pixels become a window into a\n"
+        " * buffer AM_WINMX/AM_WINMY bigger on every side, with the buffer's pitch:\n"
+        " * a scroll step moves the window, the picture stays where it is, and only\n"
+        " * when the margin is used up is it moved back to the middle - one pass\n"
+        " * every dozen or so steps. Everything that touches the surface goes by its\n"
+        " * pitch. When the scroll ends, the next full copy from the cache puts the\n"
+        " * window back in the middle, 16-byte aligned for MOVE16 (amigaWinHome). */\n"
+        "enum { AM_WINMX = 192, AM_WINMY = 96 };\n"
+        "bool Map::amigaInWin()\n"
+        "{\n"
+        "\tSDL_Surface *s_ = getSurface();\n"
+        "\treturn _fcWinBuf != 0 && s_->pitch == _fcWinBW && (Uint8 *)s_->pixels >= _fcWinBuf && (Uint8 *)s_->pixels < _fcWinBuf + (size_t)_fcWinBW * _fcWinBH;\n"
+        "}\n"
+        "\n"
+        "/* the window back to the middle; its content is about to be rewritten */\n"
+        "void Map::amigaWinHome()\n"
+        "{\n"
+        "\tif (!amigaInWin()) return;\n"
+        "\tSDL_Surface *s_ = getSurface();\n"
+        "\tSDL_LockSurface(s_);\n"
+        "\t_fcWinX = AM_WINMX; _fcWinY = AM_WINMY;\n"
+        "\ts_->pixels = _fcWinBuf + (size_t)_fcWinY * _fcWinBW + _fcWinX;\n"
+        "\tSDL_UnlockSurface(s_);\n"
+        "}\n"
+        "\n"
+        "/* The picture moves by (dx,dy) on screen. src: the picture as it was (the\n"
+        " * surface itself, or a cache slot with pitch spitch on the first step).\n"
+        " * Leaves the exposed strips cleared to the map background. */\n"
+        "bool Map::amigaWinMove(int dx, int dy, const Uint8 *src, int spitch)\n"
+        "{\n"
+        "\tSDL_Surface *s_ = getSurface();\n"
+        "\tconst int w_ = getWidth(), h_ = getHeight();\n"
+        "\tconst int bw_ = (w_ + 2 * AM_WINMX + 15) & ~15, bh_ = h_ + 2 * AM_WINMY;\n"
+        "\tif (bw_ > 65535) return false;\n"
+        "\tif (_fcWinMem == 0 || _fcWinBW != bw_ || _fcWinBH != bh_)\n"
+        "\t{\n"
+        "\t\tif (amigaInWin()) return false;   /* resized while in the window: not handled, use the old way */\n"
+        "\t\tdelete[] _fcWinMem;\n"
+        "\t\t_fcWinMem = new Uint8[(size_t)bw_ * (bh_ + 1) + 16];   /* + a row: clear() writes h*pitch */\n"
+        "\t\t_fcWinBuf = 0;\n"
+        "\t\tif (_fcWinMem == 0) return false;\n"
+        "\t\t_fcWinBuf = (Uint8 *)(((unsigned long)_fcWinMem + 15) & ~15UL);\n"
+        "\t\t_fcWinBW = bw_; _fcWinBH = bh_;\n"
+        "\t}\n"
+        "\tconst bool inWin_ = amigaInWin();\n"
+        "\tUint8 *b_ = _fcWinBuf;\n"
+        "\tSDL_LockSurface(s_);   /* the pixels move: drops the classification and span cache */\n"
+        "\tif (!inWin_ || src != (const Uint8 *)s_->pixels)\n"
+        "\t{\n"
+        "\t\t/* first step: the picture into the middle of the window, already moved */\n"
+        "\t\tif (!inWin_) { _fcWinOrigPix = s_->pixels; _fcWinOrigPitch = s_->pitch; }\n"
+        "\t\t_fcWinX = AM_WINMX; _fcWinY = AM_WINMY;\n"
+        "\t\tUint8 *d_ = b_ + (size_t)_fcWinY * bw_ + _fcWinX;\n"
+        "\t\tint x0_ = dx > 0 ? dx : 0, x1_ = dx < 0 ? w_ + dx : w_;\n"
+        "\t\tint y0_ = dy > 0 ? dy : 0, y1_ = dy < 0 ? h_ + dy : h_;\n"
+        "\t\tif (x1_ > x0_ && y1_ > y0_)\n"
+        "\t\t\tamiga_copy_rows(d_ + (size_t)y0_ * bw_ + x0_, bw_, src + (long)(y0_ - dy) * spitch + (x0_ - dx), spitch, x1_ - x0_, y1_ - y0_);\n"
+        "\t}\n"
+        "\telse\n"
+        "\t{\n"
+        "\t\tint nx_ = _fcWinX - dx, ny_ = _fcWinY - dy;\n"
+        "\t\tif (nx_ < 0 || ny_ < 0 || nx_ + w_ > bw_ || ny_ + h_ > bh_)\n"
+        "\t\t{\n"
+        "\t\t\t/* margin used up: the window's content, as it would be at (nx_,ny_),\n"
+        "\t\t\t * moved to the middle as one linear block (what falls outside the\n"
+        "\t\t\t * buffer belongs to the exposed strips) */\n"
+        "\t\t\tlong t0_ = (long)AM_WINMY * bw_ + AM_WINMX, t1_ = t0_ + (long)(h_ - 1) * bw_ + w_;\n"
+        "\t\t\tlong delta_ = t0_ - ((long)ny_ * bw_ + nx_);\n"
+        "\t\t\tlong size_ = (long)bw_ * bh_;\n"
+        "\t\t\tif (t0_ - delta_ < 0) t0_ = delta_;\n"
+        "\t\t\tif (t1_ - delta_ > size_) t1_ = size_ + delta_;\n"
+        "\t\t\tif (t1_ > t0_) amiga_move(b_ + t0_, b_ + t0_ - delta_, (unsigned long)(t1_ - t0_));\n"
+        "\t\t\tnx_ = AM_WINMX; ny_ = AM_WINMY;\n"
+        "\t\t}\n"
+        "\t\t_fcWinX = nx_; _fcWinY = ny_;\n"
+        "\t}\n"
+        "\ts_->pixels = b_ + (size_t)_fcWinY * bw_ + _fcWinX;\n"
+        "\ts_->pitch = (Uint16)bw_;\n"
+        "\t{\n"
+        "\t\tUint8 *mp_ = (Uint8 *)s_->pixels;\n"
+        "\t\tconst Uint8 bg_ = Palette::blockOffset(0)+15;\n"
+        "\t\tif (dy > 0)      { for (int y_ = 0; y_ < dy; ++y_) memset(mp_ + (size_t)y_ * bw_, bg_, w_); }\n"
+        "\t\telse if (dy < 0) { for (int y_ = h_ + dy; y_ < h_; ++y_) memset(mp_ + (size_t)y_ * bw_, bg_, w_); }\n"
+        "\t\tif (dx > 0)      { for (int y_ = 0; y_ < h_; ++y_) memset(mp_ + (size_t)y_ * bw_, bg_, dx); }\n"
+        "\t\telse if (dx < 0) { for (int y_ = 0; y_ < h_; ++y_) memset(mp_ + (size_t)y_ * bw_ + w_ + dx, bg_, -dx); }\n"
+        "\t}\n"
+        "\tSDL_UnlockSurface(s_);\n"
+        "\treturn true;\n"
+        "}\n"
+        "void Map::amigaVerifyFrame()\n"
+        "{\n"
+        "\tstatic Uint8 *ref_ = 0; static size_t refsz_ = 0;\n"
+        "\tstatic unsigned long nChk_ = 0, nBad_ = 0;\n"
+        "\tSDL_Surface *s_ = getSurface();\n"
+        "\tconst int w_ = getWidth(), h_ = getHeight();\n"
+        "\tconst size_t sz_ = (size_t)s_->pitch * h_;\n"
+        "\tif (refsz_ < sz_) { delete[] ref_; ref_ = new Uint8[sz_]; refsz_ = sz_; }\n"
+        "\tmemcpy(ref_, s_->pixels, sz_);\n"
+        "\tAmigaClipX0 = 0; AmigaClipY0 = 0; AmigaClipX1 = 1 << 14; AmigaClipY1 = 1 << 14;\n"
+        "\tAmigaDirtyGrid = 0;\n"
+        "\tAmigaVerifyNoStore = 1;\n"
+        "\tclear(Palette::blockOffset(0)+15);\n"
+        "\tamigaComposeVisible();\n"
+        "\tAmigaVerifyNoStore = 0;\n"
+        "\tAmigaClipX0 = 0; AmigaClipY0 = 0; AmigaClipX1 = 1 << 14; AmigaClipY1 = 1 << 14;\n"
+        "\t_fcClipX0 = _fcClipY0 = 0; _fcClipX1 = _fcClipY1 = 1 << 14;\n"
+        "\t++nChk_;\n"
+        "\t{\n"
+        "\t\tlong bad_ = 0; int bx0_ = w_, by0_ = h_, bx1_ = -1, by1_ = -1;\n"
+        "\t\tfor (int y_ = 0; y_ < h_; ++y_)\n"
+        "\t\t{\n"
+        "\t\t\tconst Uint8 *a_ = (const Uint8 *)s_->pixels + (size_t)y_ * s_->pitch, *b_ = ref_ + (size_t)y_ * s_->pitch;\n"
+        "\t\t\tif (memcmp(a_, b_, w_) == 0) continue;\n"
+        "\t\t\tfor (int x_ = 0; x_ < w_; ++x_)\n"
+        "\t\t\t\tif (a_[x_] != b_[x_])\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\t++bad_;\n"
+        "\t\t\t\t\tif (x_ < bx0_) bx0_ = x_; if (x_ > bx1_) bx1_ = x_;\n"
+        "\t\t\t\t\tif (y_ < by0_) by0_ = y_; if (y_ > by1_) by1_ = y_;\n"
+        "\t\t\t\t}\n"
+        "\t\t}\n"
+        "\t\tif (bad_)\n"
+        "\t\t{\n"
+        "\t\t\t++nBad_;\n"
+        "\t\t\tif (nBad_ <= 30 || (nBad_ % 100) == 0)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tchar b_[200];\n"
+        "\t\t\t\tsnprintf(b_, sizeof b_, \"mapverify: MISMATCH #%lu of %lu checks: %ld px in %d,%d-%d,%d (own %d, phase %d)\",\n"
+        "\t\t\t\t\tnBad_, nChk_, bad_, bx0_, by0_, bx1_, by1_, _fcOwn, _animFrame & 7);\n"
+        "\t\t\t\tSDLmini_Log(b_);\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "\t\telse if ((nChk_ % 200) == 0)\n"
+        "\t\t{\n"
+        "\t\t\tchar b_[96];\n"
+        "\t\t\tsnprintf(b_, sizeof b_, \"mapverify: %lu checks, %lu mismatches\", nChk_, nBad_);\n"
+        "\t\t\tSDLmini_Log(b_);\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\tSDLmini_Written(s_);\n"
+        "\tmemcpy(s_->pixels, ref_, sz_);\n"
+        "}\n"
+        "\n"
         "/* After drawTerrain: copy the composed area (whole picture or the clip\n"
         " * rect) into the current phase's cache and mark that phase clean. */\n"
         "void Map::amigaCacheStore()\n"
         "{\n"
+        "\tif (AmigaVerifyNoStore) return;\n"
         "\tconst int w_ = getWidth(), h_ = getHeight();\n"
         "\tconst int ph_ = _animFrame & 7;\n"
         "\t\tbool wasFull_ = (AmigaClipX0 <= 0 && AmigaClipY0 <= 0 && AmigaClipX1 >= w_ && AmigaClipY1 >= h_);\n"
@@ -4370,7 +4574,8 @@ def main():
         "\t\tif (y0 < 0) y0 = 0;\n"
         "\t\tif (x1 > w_) x1 = w_;\n"
         "\t\tif (y1 > h_) y1 = h_;\n"
-        "\t\tif (x1 > x0 && y1 > y0)\n"
+        "\t\tif (wasFull_) _fcOwn = -1;   /* a full compose is stored the ordinary way */\n"
+        "\t\tif (x1 > x0 && y1 > y0 && _fcOwn != ph_)   /* owned: the surface already is the picture */\n"
         "\t\t{\n"
         "\t\t\tSDL_Surface *s_ = getSurface();\n"
         "\t\t\tconst Uint8 *sp_ = (const Uint8 *)s_->pixels + (size_t)y0 * s_->pitch + x0;\n"
@@ -4411,6 +4616,32 @@ def main():
         "\t\t{\n"
         "\t\t\t_fcGridW = _save->getMapSizeX(); _fcGridH = _save->getMapSizeY();\n"
         "\t\t\tfor (int i_ = 0; i_ < 8; ++i_) { delete[] _fcGrid[i_]; _fcGrid[i_] = new Uint8[(size_t)_fcGridW * _fcGridH]; memset(_fcGrid[i_], 0, (size_t)_fcGridW * _fcGridH); _fcDirtyN[i_] = 0; _fcValid[i_] = 0; }\n"
+        "\t\t}\n"
+        "\t\t/* scroll ownership (see the scroll shift below): valid only while the\n"
+        "\t\t * surface holds exactly what the last draw() left in it, and only for\n"
+        "\t\t * the phase it was drawn in. Someone else wrote it: that picture is\n"
+        "\t\t * gone. The phase moved on: put the picture back in its cache slot. */\n"
+        "\t\tif (_fcOwn >= 0 && (_fcOwn != ph_ || getSurface()->amgen != _fcOwnGen || w_ != _fcW || h_ != _fcH))\n"
+        "\t\t{\n"
+        "\t\t\tSDL_Surface *os_ = getSurface();\n"
+        "\t\t\tif (os_->amgen == _fcOwnGen && w_ == _fcW && h_ == _fcH && _fcValid[_fcOwn] && _fcPix[_fcOwn])\n"
+        "\t\t\t\tamiga_copy_rows(_fcPix[_fcOwn], w_, os_->pixels, os_->pitch, w_, h_);\n"
+        "\t\t\telse\n"
+        "\t\t\t\t_fcValid[_fcOwn] = 0;\n"
+        "\t\t\t_fcOwn = -1;\n"
+        "\t\t}\n"
+        "\t\t/* The pictures are w_ x h_ bytes, allocated at the first size seen. The\n"
+        "\t\t * map changes size when the screen does - with amigaNativeScale a mission\n"
+        "\t\t * started from the 320x200 Geoscape is set up there and then shown at\n"
+        "\t\t * 640x400 - and the old buffers were reused at the new size: 256 KB\n"
+        "\t\t * copies into 64 KB blocks, over the battle's tiles (a save then hit\n"
+        "\t\t * \"value < 65536\" in serializeInt, 2026-10-20). New size, new buffers. */\n"
+        "\t\tif ((w_ != _fcW || h_ != _fcH) && _fcW != 0)\n"
+        "\t\t{\n"
+        "\t\t\tchar b_[96];\n"
+        "\t\t\tsnprintf(b_, sizeof b_, \"map cache: map resized %dx%d -> %dx%d, pictures reallocated\", _fcW, _fcH, w_, h_);\n"
+        "\t\t\tSDLmini_Log(b_);\n"
+        "\t\t\tfor (int i_ = 0; i_ < 8; ++i_) { delete[] _fcPix[i_]; _fcPix[i_] = 0; _fcValid[i_] = 0; }\n"
         "\t\t}\n"
         "\t\tif (w_ != _fcW || h_ != _fcH || sig_ != _fcSig || _fcUnitPos.size() != un_)\n"
         "\t\t{\n"
@@ -4463,6 +4694,50 @@ def main():
         "\t\t\t\t\t\t{\n"
         "\t\t\t\t\t\t\tif (i_ != (_animFrame & 7)) { _fcValid[i_] = 0; if (_fcGrid[i_]) memset(_fcGrid[i_], 0, (size_t)_fcGridW * _fcGridH); _fcDirtyN[i_] = 0; _fcBoxN[i_] = 0; continue; }\n"
         "\t\t\t\t\t\t\tif (!_fcValid[i_] || _fcPix[i_] == 0) continue;\n"
+        "\t\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\t\t/* scroll ownership (2026-10-20): the shifted picture goes straight\n"
+        "\t\t\t\t\t\t\t\t * into the map surface, which then IS this phase's picture - the\n"
+        "\t\t\t\t\t\t\t\t * cache slot is left stale until the phase changes. Was: shift the\n"
+        "\t\t\t\t\t\t\t\t * slot row by row (one or two passes of libnix memmove, which goes\n"
+        "\t\t\t\t\t\t\t\t * byte by byte upwards), then copy it to the surface - two to three\n"
+        "\t\t\t\t\t\t\t\t * full passes over 256 KB per scroll step at 640x400, now one. The\n"
+        "\t\t\t\t\t\t\t\t * buffer is shifted as ONE linear block by dy*w+dx: what wraps from\n"
+        "\t\t\t\t\t\t\t\t * one row into the next lands in the exposed strip, cleared below. */\n"
+        "\t\t\t\t\t\t\t\tSDL_Surface *ms_ = getSurface();\n"
+        "\t\t\t\t\t\t\t\tif (Options::amigaScrollOwn)\n"
+        "\t\t\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\t\t\t/* the scroll window (amigaWinMove) - no pass over the picture */\n"
+        "\t\t\t\t\t\t\t\t\tconst Uint8 *ws_ = (_fcOwn == i_) ? (const Uint8 *)ms_->pixels : _fcPix[i_];\n"
+        "\t\t\t\t\t\t\t\t\tint wp_ = (_fcOwn == i_) ? ms_->pitch : w_;\n"
+        "\t\t\t\t\t\t\t\t\t/* the first step starts from the cache slot of the CURRENT phase,\n"
+        "\t\t\t\t\t\t\t\t\t * which is not what was shown when the phase just changed (animated\n"
+        "\t\t\t\t\t\t\t\t\t * tiles, the arrow's bob): not a pure move for the display layer */\n"
+        "\t\t\t\t\t\t\t\t\tconst bool first_ = (_fcOwn != i_);\n"
+        "\t\t\t\t\t\t\t\t\tif (amigaWinMove(dx_, dy_, ws_, wp_))\n"
+        "\t\t\t\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\t\t\t\t_fcOwn = i_;\n"
+        "\t\t\t\t\t\t\t\t\t\tif (first_) SDLmini_LayerFull(ms_); else SDLmini_LayerScroll(ms_, dx_, dy_);\n"
+        "\t\t\t\t\t\t\t\t\t\tcontinue;\n"
+        "\t\t\t\t\t\t\t\t\t}\n"
+        "\t\t\t\t\t\t\t\t}\n"
+        "\t\t\t\t\t\t\t\tif (ms_->pitch == w_ && Options::amigaScrollOwn)\n"
+        "\t\t\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\t\t\tUint8 *mp_ = (Uint8 *)ms_->pixels;\n"
+        "\t\t\t\t\t\t\t\t\tconst Uint8 *src_ = (_fcOwn == i_) ? mp_ : _fcPix[i_];\n"
+        "\t\t\t\t\t\t\t\t\tlong n_ = (long)w_ * h_, off_ = (long)dy_ * w_ + dx_;\n"
+        "\t\t\t\t\t\t\t\t\tSDLmini_Written(ms_);\n"
+        "\t\t\t\t\t\t\t\t\tif (off_ >= 0) amiga_move(mp_ + off_, src_, (unsigned long)(n_ - off_));\n"
+        "\t\t\t\t\t\t\t\t\telse amiga_move(mp_, src_ - off_, (unsigned long)(n_ + off_));\n"
+        "\t\t\t\t\t\t\t\t\tif (dy_ > 0)      memset(mp_, Palette::blockOffset(0)+15, (size_t)dy_ * w_);\n"
+        "\t\t\t\t\t\t\t\t\telse if (dy_ < 0) memset(mp_ + (size_t)(h_ + dy_) * w_, Palette::blockOffset(0)+15, (size_t)(-dy_) * w_);\n"
+        "\t\t\t\t\t\t\t\t\tif (dx_ > 0)      { for (int y_ = 0; y_ < h_; ++y_) memset(mp_ + (size_t)y_ * w_, Palette::blockOffset(0)+15, dx_); }\n"
+        "\t\t\t\t\t\t\t\t\telse if (dx_ < 0) { for (int y_ = 0; y_ < h_; ++y_) memset(mp_ + (size_t)y_ * w_ + w_ + dx_, Palette::blockOffset(0)+15, -dx_); }\n"
+        "\t\t\t\t\t\t\t\t\tif (src_ == mp_) SDLmini_LayerScroll(ms_, dx_, dy_); else SDLmini_LayerFull(ms_);\n"
+        "\t\t\t\t\t\t\t\t\t_fcOwn = i_;\n"
+        "\t\t\t\t\t\t\t\t\tcontinue;\n"
+        "\t\t\t\t\t\t\t\t}\n"
+        "\t\t\t\t\t\t\t\tif (_fcOwn == i_) { amiga_copy_rows(_fcPix[i_], w_, ms_->pixels, ms_->pitch, w_, h_); _fcOwn = -1; }\n"
+        "\t\t\t\t\t\t\t}\n"
         "\t\t\t\t\t\t\tUint8 *b_ = _fcPix[i_];\n"
         "\t\t\t\t\t\t\tif (dy_ > 0)      { for (int y_ = h_ - 1; y_ >= dy_; --y_) memmove(b_ + (size_t)y_ * w_, b_ + (size_t)(y_ - dy_) * w_, w_); }\n"
         "\t\t\t\t\t\t\telse if (dy_ < 0) { for (int y_ = 0; y_ < h_ + dy_; ++y_) memmove(b_ + (size_t)y_ * w_, b_ + (size_t)(y_ - dy_) * w_, w_); }\n"
@@ -4495,6 +4770,10 @@ def main():
         "\t\t\t\t\t\tbY -= (_camera->getViewLevel() * 2); bX -= (_camera->getViewLevel() * 2);\n"
         "\t\t\t\t\t\tif (bX < 0) bX = 0; if (bY < 0) bY = 0;\n"
         "\t\t\t\t\t\tint vl_ = _camera->getViewLevel();\n"
+        "\t\t\t\t\t\t/* the other phases' marks matter only for phases still valid - while\n"
+        "\t\t\t\t\t\t * scrolling there are none (see 1E), so skip the per-level tile scan */\n"
+        "\t\t\t\t\t\tbool othV_ = false;\n"
+        "\t\t\t\t\t\tfor (int i_ = 0; i_ < 8; ++i_) if (i_ != ph_ && _fcValid[i_]) othV_ = true;\n"
         "\t\t\t\t\t\tfor (int tx_ = bX; tx_ <= eX; ++tx_)\n"
         "\t\t\t\t\t\t\tfor (int ty_ = bY; ty_ <= eY; ++ty_)\n"
         "\t\t\t\t\t\t\t{\n"
@@ -4514,7 +4793,7 @@ def main():
         "\t\t\t\t\t\t\t\t\tamigaMarkTileNoBox(ph_, tx_, ty_);\n"
         "\t\t\t\t\t\t\t\t\tTile *st_ = _save->getTile(Position(tx_, ty_, vl_));\n"
         "\t\t\t\t\t\t\t\t\tbool an_ = false;\n"
-        "\t\t\t\t\t\t\t\t\tfor (int z2_ = 0; z2_ <= vl_ && !an_; ++z2_) { Tile *tz_ = _save->getTile(Position(tx_, ty_, z2_)); if (!tz_) continue; for (int pt_ = 0; pt_ < 4 && !an_; ++pt_) { MapData *md_ = tz_->getMapData(pt_); if (md_ && md_->amigaIsAnimated()) an_ = true; } if (tz_->getFire() || tz_->getSmoke()) an_ = true; }\n"
+        "\t\t\t\t\t\t\t\t\tif (othV_) for (int z2_ = 0; z2_ <= vl_ && !an_; ++z2_) { Tile *tz_ = _save->getTile(Position(tx_, ty_, z2_)); if (!tz_) continue; for (int pt_ = 0; pt_ < 4 && !an_; ++pt_) { MapData *md_ = tz_->getMapData(pt_); if (md_ && md_->amigaIsAnimated()) an_ = true; } if (tz_->getFire() || tz_->getSmoke()) an_ = true; }\n"
         "\t\t\t\t\t\t\t\t\t(void)st_;\n"
         "\t\t\t\t\t\t\t\t\tif (an_) for (int ph2_ = 0; ph2_ < 8; ++ph2_) if (ph2_ != ph_) amigaMarkTileNoBox(ph2_, tx_, ty_);\n"
         "\t\t\t\t\t\t\t\t\t_fcScrollStrip = true;\n"
@@ -4625,21 +4904,31 @@ def main():
         "\t\t\t\t}\n"
         "\t\t\t}\n"
         "\t\t}\n"
+        "\t\tif (_fcOwn >= 0 && !_fcValid[_fcOwn]) _fcOwn = -1;   /* dropped above */\n"
         "\t\t/* current phase usable? */\n"
         "\t\tif (_fcValid[ph_] && _fcPix[ph_] != 0)\n"
         "\t\t{\n"
         "\t\t\tSDL_Surface *d_ = getSurface();\n"
-        "\t\t\tSDLmini_Written(d_);   /* the copy and the repairs below write d_ directly */\n"
-        "\t\t\tconst Uint8 *sp_ = _fcPix[ph_];\n"
-        "\t\t\tUint8 *dp_ = (Uint8 *)d_->pixels;\n"
-        "\t\t\tamiga_copy_rows(dp_, d_->pitch, sp_, w_, w_, h_);   /* MOVE16 rows on 040/060 */\n"
+        "\t\t\tif (_fcOwn != ph_)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tamigaWinHome();        /* overwritten whole: back to the aligned middle */\n"
+        "\t\t\t\tSDLmini_Written(d_);   /* the copy and the repairs below write d_ directly */\n"
+        "\t\t\t\tSDLmini_LayerFull(d_);\n"
+        "\t\t\t\tconst Uint8 *sp_ = _fcPix[ph_];\n"
+        "\t\t\t\tUint8 *dp_ = (Uint8 *)d_->pixels;\n"
+        "\t\t\t\tamiga_copy_rows(dp_, d_->pitch, sp_, w_, w_, h_);   /* MOVE16 rows on 040/060 */\n"
+        "\t\t\t}\n"
         "\t\t\tif (_fcDirtyN[ph_] == 0)\n"
         "\t\t\t{\n"
         "\t\t\t\t++AmCp_hit;\n"
         "\t\t\t\t_fcScrollStrip = false;   /* nothing to propagate this frame */\n"
+        "\t\t\t\tif (Options::amigaMapVerify) amigaVerifyFrame();\n"
+        "\t\t\t\tif (_fcOwn >= 0) _fcOwnGen = d_->amgen;\n"
+        "\t\t\t\tSDLmini_LayerDone(d_);\n"
         "\t\t\t\t_redraw = false;\n"
         "\t\t\t\treturn;\n"
         "\t\t\t}\n"
+        "\t\t\tSDLmini_Written(d_);   /* the repairs write d_ directly */\n"
         "\t\t\t/* dirty hit: ONE compose over the view, skipping clean tiles */\n"
         "\t\t\tamPartial_ = true; ++AmCp_part; AmCp_partRects += _fcBoxN[ph_];\n"
         "\t\t\t/* 1B: one repair pass per box (strip, cursor, unit...), not one over their union */\n"
@@ -4653,6 +4942,7 @@ def main():
         "\t\t\t\tif (x1 > x0 && y1 > y0)\n"
         "\t\t\t\t{\n"
         "\t\t\t\t\tAmCp_partPx += (unsigned long)(x1 - x0) * (unsigned long)(y1 - y0);\n"
+        "\t\t\t\t\tSDLmini_LayerDamage(d_, x0, y0, x1 - x0, y1 - y0);\n"
         "\t\t\t\t\tAmigaClipX0 = x0; AmigaClipY0 = y0; AmigaClipX1 = x1; AmigaClipY1 = y1;\n"
         "\t\t\t\t\tAmigaDirtyGrid = _fcGrid[ph_]; AmigaDirtyGridW = _fcGridW; AmigaDirtyGridH = _fcGridH;\n"
         "\t\t\t\t\t/* clear the dirty tiles' pixels: not the box (it holds clean tiles too)\n"
@@ -4666,7 +4956,9 @@ def main():
         "\t\t\t\t\tamigaComposeVisible();\n"
         "\t\t\t\t\t{ Uint32 dd_ = SDL_GetTicks() - t0_; AmCp_partMs += dd_; AmCp_partTiles += AmigaTileN - tb_; AmCp_partBlits += AmigaShadeThruN - bb_; }\n"
         "\t\t\t\t\tAmigaDirtyGrid = 0;\n"
-        "\t\t\t\t\tif (_fcScrollStrip)\n"
+        "\t\t\t\t\tbool othV_ = false;   /* nothing to propagate into when no other phase is valid */\n"
+        "\t\t\t\t\tfor (int i_ = 0; i_ < 8; ++i_) if (i_ != ph_ && _fcValid[i_]) othV_ = true;\n"
+        "\t\t\t\t\tif (_fcScrollStrip && othV_)\n"
         "\t\t\t\t\t{\n"
         "\t\t\t\t\t\t/* scroll propagate: the repaired area of THIS phase is, bar the animated\n"
         "\t\t\t\t\t\t * tiles (left dirty there), the same in every other phase - copy it. */\n"
@@ -4707,12 +4999,16 @@ def main():
         "\t\t\t_fcDirtyN[ph_] = 0; _fcBoxN[ph_] = 0;\n"
         "\t\t\tAmigaClipX0 = 0; AmigaClipY0 = 0; AmigaClipX1 = 1 << 14; AmigaClipY1 = 1 << 14;\n"
         "\t\t\t_fcClipX0 = _fcClipY0 = 0; _fcClipX1 = _fcClipY1 = 1 << 14;\n"
+        "\t\t\tif (Options::amigaMapVerify) amigaVerifyFrame();\n"
+        "\t\t\tif (_fcOwn >= 0) _fcOwnGen = d_->amgen;\n"
+        "\t\t\tSDLmini_LayerDone(d_);\n"
         "\t\t\t_redraw = false;\n"
         "\t\t\treturn;\n"
         "\t\t}\n"
         "\t\telse\n"
         "\t\t{\n"
         "\t\t\t++AmCp_whyMiss;\n"
+        "\t\t\tSDLmini_LayerFull(getSurface());\n"
         "\t\t\t_fcClipX0 = 0; _fcClipY0 = 0; _fcClipX1 = w_; _fcClipY1 = h_;\n"
         "\t\t}\n"
         "\t}\n"
@@ -4726,6 +5022,8 @@ def main():
         "#endif\n"
         "#ifdef __AMIGA__\n"
         "\tamigaComposeVisible();   /* compose split */\n"
+        "\tSDLmini_LayerFull(getSurface());\n"
+        "\tSDLmini_LayerDone(getSurface());\n"
         "}\n"
         "\n"
         "/* The part of draw() that actually composes: FOV visibility flags for the\n"
@@ -4755,6 +5053,8 @@ def main():
         "\t\t * the cached map away either: an alien turn flips between this\n"
         "\t\t * screen and the map on every shot, and each flip used to be a full\n"
         "\t\t * recompose. The map underneath is still valid. */\n"
+        "\t\tif (_fcOwn >= 0) { _fcValid[_fcOwn] = 0; _fcOwn = -1; }   /* ...unless only the surface held it */\n"
+        "\t\tSDLmini_LayerFull(getSurface());\n"
         "#endif\n"
         "\t\t_message->blit(this);\n"
         "\t}\n"
@@ -4792,11 +5092,56 @@ def main():
         "#endif\n",
         "dirty-rect narrow tile loop")))
 
+    # A partial compose walks the tile loop over the whole view and drops every
+    # tile whose screen column misses the clip box (the "partial compose" test
+    # in the loop). At 640x400 that is ~8000 tiles (4 levels) for the few dozen
+    # a scroll strip needs - ~5 of the ~9 ms a strip took on a Warp 060. The
+    # itY range of each itX that can pass the test follows from
+    # Camera::convertMapToScreen; it is computed instead, a tile wider each
+    # way, and the test itself stays.
+    results.append(("Map.cpp (partial compose tile range)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\tsurface->lock();\n"
+        "\tfor (int itZ = beginZ; itZ <= endZ; itZ++)\n"
+        "\t{\n"
+        "\t\tfor (int itX = beginX; itX <= endX; itX++)\n"
+        "\t\t{\n"
+        "\t\t\tfor (int itY = beginY; itY <= endY; itY++)\n",
+        "\tsurface->lock();\n"
+        "#ifdef __AMIGA__\n"
+        "\tconst int amHalfW_ = _spriteWidth / 2, amQuarterW_ = _spriteWidth / 4, amLvlH_ = (_spriteHeight + _spriteWidth / 4) / 2;\n"
+        "\tconst Position amOff_ = _camera->getMapOffset();\n"
+        "#endif\n"
+        "\tfor (int itZ = beginZ; itZ <= endZ; itZ++)\n"
+        "\t{\n"
+        "\t\tfor (int itX = beginX; itX <= endX; itX++)\n"
+        "\t\t{\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t\tint amY0_ = beginY, amY1_ = endY;\n"
+        "\t\t\tif (AmigaDirtyGrid != 0)\n"
+        "\t\t\t{\n"
+        "\t\t\t\t/* screen x = halfW*(x-y) + offX must lie in (X0 - spriteWidth, X1) */\n"
+        "\t\t\t\tint lo_ = amFloorDiv_(AmigaClipX0 - _spriteWidth - amOff_.x, amHalfW_) - 1;\n"
+        "\t\t\t\tint hi_ = amFloorDiv_(AmigaClipX1 - amOff_.x, amHalfW_) + 1;\n"
+        "\t\t\t\tif (itX - hi_ > amY0_) amY0_ = itX - hi_;\n"
+        "\t\t\t\tif (itX - lo_ < amY1_) amY1_ = itX - lo_;\n"
+        "\t\t\t\t/* screen y = quarterW*(x+y) - z*lvlH + offY must exceed Y0 - spriteHeight */\n"
+        "\t\t\t\tint s_ = amFloorDiv_(AmigaClipY0 - _spriteHeight + itZ * amLvlH_ - amOff_.y, amQuarterW_) - 1;\n"
+        "\t\t\t\tif (s_ - itX > amY0_) amY0_ = s_ - itX;\n"
+        "\t\t\t}\n"
+        "\t\t\tfor (int itY = amY0_; itY <= amY1_; itY++)\n"
+        "#else\n"
+        "\t\t\tfor (int itY = beginY; itY <= endY; itY++)\n"
+        "#endif\n",
+        "partial compose tile range")))
+
     results.append(("Map.cpp (dirty-rect cache free)", edit(
         os.path.join(src, "Battlescape", "Map.cpp"),
         "\tdelete _scrollMouseTimer;\n",
         "#ifdef __AMIGA__\n"
         "\tfor (int fc_ = 0; fc_ < 8; ++fc_) { delete[] _fcPix[fc_]; delete[] _fcGrid[fc_]; }\n"
+        "\tif (amigaInWin()) { getSurface()->pixels = _fcWinOrigPix; getSurface()->pitch = (Uint16)_fcWinOrigPitch; }\n"
+        "\tdelete[] _fcWinMem;\n"
         "#endif\n"
         "\tdelete _scrollMouseTimer;\n",
         "dirty-rect cache free")))
@@ -5462,6 +5807,24 @@ def main():
         GLOBE_CACHE_OLD,
         GLOBE_CACHE_NEW,
         "vertex trig table")))
+    # ...and the cached polygons now belong to the pool in Globe::cache.
+    results.append(("Geoscape/Globe.cpp (cache pool: destructor)", edit(
+        os.path.join(src, "Geoscape", "Globe.cpp"),
+        "\tfor (std::list<Polygon*>::iterator i = _cacheLand.begin(); i != _cacheLand.end(); ++i)\n"
+        "\t{\n"
+        "\t\tdelete *i;\n"
+        "\t}\n"
+        "}\n",
+        "#ifdef __AMIGA__\n"
+        "\t_cacheLand.clear();   /* the polygons are Globe::cache's pool, reused by the next globe */\n"
+        "#else\n"
+        "\tfor (std::list<Polygon*>::iterator i = _cacheLand.begin(); i != _cacheLand.end(); ++i)\n"
+        "\t{\n"
+        "\t\tdelete *i;\n"
+        "\t}\n"
+        "#endif\n"
+        "}\n",
+        "cache pool destructor")))
 
     # 6l. Hover radar circles: one circle per DISTINCT range, not one per
     #     facility TYPE (~15 identical circles of 48 trig-heavy segments each
@@ -6068,7 +6431,12 @@ def main():
         "\n"
         "\tconst Uint32 now = SDL_GetTicks();\n"
         "\tbool wantBase = (!_baseValid || proj || sunKey != _sunKey);\n"
-        "\tif (wantBase && _baseValid && lastBase_ != 0 && (Uint32)(now - lastBase_) < AMIGA_GLOBE_MIN_MS)\n"
+        "\t/* amigaGlobeLive (2026-10-20): the throttle is for the clock - the sun\n"
+        "\t * creeping on with nobody touching anything. A changed projection is\n"
+        "\t * the player turning or zooming the globe, and holding that back to one\n"
+        "\t * picture a second made the globe jump instead of turn; with the redraw\n"
+        "\t * down to tens of ms (drawShadowHalfFix) it follows every frame. */\n"
+        "\tif (wantBase && _baseValid && lastBase_ != 0 && !(proj && Options::amigaGlobeLive) && (Uint32)(now - lastBase_) < AMIGA_GLOBE_MIN_MS)\n"
         "\t{\n"
         "\t\t/* throttled: keep showing the previous image; the next call retries.\n"
         "\t\t * If the projection moved, the layers on top would not line up with\n"
@@ -6776,9 +7144,15 @@ def main():
         "{\n"
         "#ifdef __AMIGA__\n"
         "\tdelete[] _amSpans; delete[] _amRowOff;\n"
-        "#endif\n"
+        "\t/* the SDL surface first: freeing it runs whatever sdlmini still has\n"
+        "\t * queued from it (the unchanged-frame skip), which reads the pixels -\n"
+        "\t * they must still be there (a read after free otherwise, 2026-10-20) */\n"
+        "\tSDL_FreeSurface(_surface);\n"
+        "\tDeleteAligned(_alignedBuffer);\n"
+        "#else\n"
         "\tDeleteAligned(_alignedBuffer);\n"
         "\tSDL_FreeSurface(_surface);\n"
+        "#endif\n"
         "}\n"
         "\n"
         "#ifdef __AMIGA__\n"
@@ -8294,6 +8668,35 @@ def main():
         "\t_info.push_back(OptionInfo(\"amigaFrameSkip\", &amigaFrameSkip, 1));\n"
         "\t_info.push_back(OptionInfo(\"amigaNativeScale\", &amigaNativeScale, false));\n",
         "amigaNativeScale info")))
+    # 6amS. Battlescape scroll switches (Map.cpp, 6z): amigaScrollOwn lets the
+    #       map surface hold the scrolled picture instead of its cache slot
+    #       (off = the old shift-then-copy, for A/B measurements);
+    #       amigaMapVerify 1 composes every cached frame in full as well and
+    #       logs "mapverify: MISMATCH" when the cache gave a different picture.
+    results.append(("Options.inc.h (scroll switches var)", edit(
+        os.path.join(src, "Engine", "Options.inc.h"),
+        "OPT bool amigaNativeScale; /* the screen follows the base resolution: no scaling, a mode switch instead */\n",
+        "OPT bool amigaNativeScale; /* the screen follows the base resolution: no scaling, a mode switch instead */\n"
+        "OPT bool amigaScrollOwn; /* battlescape scroll: the map surface holds the shifted picture */\n"
+        "OPT int amigaMapVerify; /* 1: check every cached battlescape frame against a full compose */\n"
+        "OPT bool amigaVramLayer; /* RTG: scroll the display with the card's blitter (sdlmini layer frames) */\n"
+        "OPT bool amigaGlobeLive; /* redraw the globe on every frame it is turned or zoomed, not once a second */\n",
+        "scroll switches var")))
+    results.append(("Options.cpp (scroll switches info)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t_info.push_back(OptionInfo(\"amigaNativeScale\", &amigaNativeScale, false));\n",
+        "\t_info.push_back(OptionInfo(\"amigaNativeScale\", &amigaNativeScale, false));\n"
+        "\t_info.push_back(OptionInfo(\"amigaScrollOwn\", &amigaScrollOwn, true));\n"
+        "\t_info.push_back(OptionInfo(\"amigaMapVerify\", &amigaMapVerify, 0));\n"
+        "\t_info.push_back(OptionInfo(\"amigaVramLayer\", &amigaVramLayer, true));\n"
+        "\t_info.push_back(OptionInfo(\"amigaGlobeLive\", &amigaGlobeLive, true));\n",
+        "scroll switches info")))
+    results.append(("Options.cpp (amigaVramLayer mirror)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t\t\tSDLmini_FrameSkip = amigaFrameSkip;\n",
+        "\t\t\tSDLmini_FrameSkip = amigaFrameSkip;\n"
+        "\t\t\tSDLmini_VramLayer = amigaVramLayer ? 1 : 0;\n",
+        "amigaVramLayer mirror")))
     results.append(("Screen.cpp (amigaNativeScale)", edit(
         os.path.join(src, "Engine", "Screen.cpp"),
         "\tmakeVideoFlags();\n"
@@ -8332,6 +8735,12 @@ def main():
         'extern "C" int AmigaPerfLog;\n'
         'extern "C" int SDLmini_FrameSkip;\n',
         "amigaFrameSkip extern")))
+    results.append(("Options.cpp (amigaVramLayer extern)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        'extern "C" int SDLmini_FrameSkip;\n',
+        'extern "C" int SDLmini_FrameSkip;\n'
+        'extern "C" int SDLmini_VramLayer;\n',
+        "amigaVramLayer extern")))
     results.append(("en-US.yml (split walk strings)", edit(
         os.path.join(src, "..", "bin", "common", "Language", "en-US.yml"),
         "  STR_AMIGA_ANIM_HALF: \"Half (faster)\"\n",
