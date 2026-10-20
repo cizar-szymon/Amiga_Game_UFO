@@ -1321,25 +1321,83 @@ GLOBE_CIRCLE_NEW = r'''void Globe::drawGlobeCircle(double lat, double lon, doubl
 	const double N2x = -sLon, N2y = cLon, N2z = 0.0;
 	const double sCLat = sin(_cenLat), cCLat = cos(_cenLat);
 	const double sCLon = sin(_cenLon), cCLon = cos(_cenLon);
-	double px = 0.0, py = 0.0;
+	/* (2026-10-20) the per-segment work in Q1.14 and the line walked with
+	 * direct pixel access: in doubles - soft-float in the plain build - and
+	 * through XuLine's double clipper and getPixel/setPixel, the radar circles
+	 * of the base-site screen cost ~10 ms of every redraw of a turning globe. */
+	static Sint16 lutCq[64], lutSq[64];
+	static int lutQ = 0;
+	if (lutQ != lutN)
+	{
+		for (int k = 0; k < lutN; ++k)
+		{
+			lutCq[k] = (Sint16)floor(lutC[k] * 16384.0 + 0.5);
+			lutSq[k] = (Sint16)floor(lutS[k] * 16384.0 + 0.5);
+		}
+		lutQ = lutN;
+	}
+	const Sint32 Ax = (Sint32)floor(Cx * cR * 16384.0 + 0.5), Ay = (Sint32)floor(Cy * cR * 16384.0 + 0.5), Az = (Sint32)floor(Cz * cR * 16384.0 + 0.5);
+	const Sint32 Bx = (Sint32)floor(N1x * sR * 16384.0 + 0.5), By = (Sint32)floor(N1y * sR * 16384.0 + 0.5), Bz = (Sint32)floor(N1z * sR * 16384.0 + 0.5);
+	const Sint32 Ex = (Sint32)floor(N2x * sR * 16384.0 + 0.5), Ey = (Sint32)floor(N2y * sR * 16384.0 + 0.5);
+	(void)N2z;
+	const Sint32 qsCLat = (Sint32)floor(sCLat * 16384.0 + 0.5), qcCLat = (Sint32)floor(cCLat * 16384.0 + 0.5);
+	const Sint32 qsCLon = (Sint32)floor(sCLon * 16384.0 + 0.5), qcCLon = (Sint32)floor(cCLon * 16384.0 + 0.5);
+	const Sint32 radQ = (Sint32)(_radius * 16.0 + 0.5);
+	const Sint32 cx16 = (Sint32)_cenX << 16, cy16 = (Sint32)_cenY << 16;
+	Sint32 px = 0, py = 0;
 	int have = 0, backPrev = 1;
 	for (int k = 0; k <= lutN; ++k)
 	{
 		const int ki = (k == lutN) ? 0 : k;
-		const double Px = Cx * cR + (N1x * lutC[ki] + N2x * lutS[ki]) * sR;
-		const double Py = Cy * cR + (N1y * lutC[ki] + N2y * lutS[ki]) * sR;
-		const double Pz = Cz * cR + (N1z * lutC[ki] + N2z * lutS[ki]) * sR;
-		/* world (Px,Py,Pz) -> view: cosLat*cos(dLon) etc. fall out directly */
-		const double cd = Px * cCLon + Py * sCLon;
-		const double sd = Py * cCLon - Px * sCLon;
-		const double vy = cCLat * Pz - sCLat * cd;
-		const double vz = cCLat * cd + sCLat * Pz;
-		const double sx = _cenX + _radius * sd;
-		const double sy = _cenY + _radius * vy;
-		const int back = (vz < 0.0);
+		const Sint32 lc = lutCq[ki], ls = lutSq[ki];
+		const Sint32 Px = Ax + ((Bx * lc + Ex * ls) >> 14);
+		const Sint32 Py = Ay + ((By * lc + Ey * ls) >> 14);
+		const Sint32 Pz = Az + ((Bz * lc) >> 14);
+		const Sint32 cd = (Px * qcCLon + Py * qsCLon) >> 14;
+		const Sint32 sd = (Py * qcCLon - Px * qsCLon) >> 14;
+		const Sint32 vy = (qcCLat * Pz - qsCLat * cd) >> 14;
+		const Sint32 vz = (qcCLat * cd + qsCLat * Pz) >> 14;
+		const Sint32 sx = cx16 + ((radQ * sd) >> 2);   /* 16.16 */
+		const Sint32 sy = cy16 + ((radQ * vy) >> 2);
+		const int back = (vz < 0);
 		if (have && !back && !backPrev)
-			XuLine(_radars, this, sx, sy, px, py, 4);
+			amigaRadarLine(sx, sy, px, py, 4);
 		px = sx; py = sy; have = 1; backPrev = back;
+	}
+}
+
+/* XuLine for the radar circles, in 16.16 and straight on the pixels: the
+ * shade of the globe pixel under each point of the line, written to the
+ * radar layer (both surfaces are locked by drawRadars / the caller). Lines
+ * entirely off one side of the globe surface are dropped, the rest are
+ * clipped per pixel. */
+void Globe::amigaRadarLine(Sint32 fx1, Sint32 fy1, Sint32 fx2, Sint32 fy2, int shade)
+{
+	SDL_Surface *ds = _radars->getSurface(), *ss = getSurface();
+	const Sint32 w16 = (Sint32)ds->w << 16, h16 = (Sint32)ds->h << 16;
+	if ((fx1 < 0 && fx2 < 0) || (fy1 < 0 && fy2 < 0) || (fx1 >= w16 && fx2 >= w16) || (fy1 >= h16 && fy2 >= h16)) return;
+	const Sint32 adx = (fx2 > fx1) ? fx2 - fx1 : fx1 - fx2;
+	const Sint32 ady = (fy2 > fy1) ? fy2 - fy1 : fy1 - fy2;
+	int ilen = (int)(((adx > ady) ? adx : ady) >> 16);
+	if (ilen < 1) ilen = 1;
+	if (ilen > 4 * (ds->w + ds->h)) return;   /* a segment across far off-screen space */
+	const Sint32 stx = (fx2 - fx1) / ilen, sty = (fy2 - fy1) / ilen;
+	Sint32 x0 = fx1, y0 = fy1;
+	for (int i_ = 0; i_ < ilen; ++i_, x0 += stx, y0 += sty)
+	{
+		const int ix = (int)(x0 >> 16), iy = (int)(y0 >> 16);
+		if (ix < 0 || iy < 0 || ix >= ds->w || iy >= ds->h || ix >= ss->w || iy >= ss->h) continue;
+		int tcol = ((const Uint8 *)ss->pixels)[(size_t)iy * ss->pitch + ix];
+		if (!tcol) continue;
+		const int d = tcol & helper::ColorGroup;
+		if (d == OCEAN_COLOR || d == OCEAN_COLOR + 16)
+			tcol = OCEAN_COLOR + shade + 8;
+		else
+		{
+			const int e = tcol + shade;
+			tcol = (e > d + helper::ColorShade) ? d + helper::ColorShade : e;
+		}
+		((Uint8 *)ds->pixels)[(size_t)iy * ds->pitch + ix] = (Uint8)tcol;
 	}
 }
 '''
@@ -6345,6 +6403,7 @@ def main():
         "\t * currently show - see Globe::draw(). */\n"
         "\tbool _baseValid;\n"
         "\tlong _sunKey, _radarKey;\n"
+        "\tvoid amigaRadarLine(Sint32 fx1, Sint32 fy1, Sint32 fx2, Sint32 fy2, int shade);   /* 16.16 XuLine for the radar circles */\n"
         "#endif\n",
         "Globe cache key members")))
 
@@ -6513,6 +6572,122 @@ def main():
         "#endif\n"
         "}\n",
         "Globe draw timing")))
+
+    # 5w1. Lines and filled polygons in the palette index the game asks for.
+    #      Surface::drawLine/drawPolygon turned the index into RGBA and
+    #      sdlmini searched the 256-entry palette back for it - for every
+    #      land polygon and every country-border segment of a globe redraw -
+    #      and stopped at the FIRST entry of that colour, which may sit in
+    #      another shading block. On 8-bit surfaces the index goes straight
+    #      through (SDLmini_Line8, SDLmini_FilledPolygon8).
+    results.append(("Engine/Surface.cpp (index lines)", edit(
+        os.path.join(src, "Engine", "Surface.cpp"),
+        "\tlineColor(_surface, x1, y1, x2, y2, Palette::getRGBA(getPalette(), color));\n",
+        "#ifdef __AMIGA__\n"
+        "\tif (_surface->format->BitsPerPixel == 8) { SDLmini_Line8(_surface, x1, y1, x2, y2, color); return; }\n"
+        "#endif\n"
+        "\tlineColor(_surface, x1, y1, x2, y2, Palette::getRGBA(getPalette(), color));\n",
+        "index lines")))
+    results.append(("Engine/Surface.cpp (index polygons)", edit(
+        os.path.join(src, "Engine", "Surface.cpp"),
+        "\tfilledPolygonColor(_surface, x, y, n, Palette::getRGBA(getPalette(), color));\n",
+        "#ifdef __AMIGA__\n"
+        "\tif (_surface->format->BitsPerPixel == 8) { SDLmini_FilledPolygon8(_surface, x, y, n, color); return; }\n"
+        "#endif\n"
+        "\tfilledPolygonColor(_surface, x, y, n, Palette::getRGBA(getPalette(), color));\n",
+        "index polygons")))
+
+    # 5w2. Country borders (drawDetail, zoom >= 1) in fixed point, like the
+    #      land in Globe::cache (pkt 4). Upstream did two pointBack() and two
+    #      polarToCart() per border SEGMENT - ten soft-float double sin/cos -
+    #      ~100 ms a zoomed-in redraw at 320x200 on a Warp 060, which made a
+    #      held arrow key turn the zoomed globe at ~7 fps. Now every vertex is
+    #      projected once per redraw from Q1.14 sin/cos tabled once, and "on the
+    #      back" is the sign of its view z (exactly what pointBack computes).
+    results.append(("Geoscape/Globe.cpp (fixed-point borders)", edit(
+        os.path.join(src, "Geoscape", "Globe.cpp"),
+        "\t\tfor (std::list<Polyline*>::iterator i = _rules->getPolylines()->begin(); i != _rules->getPolylines()->end(); ++i)\n"
+        "\t\t{\n"
+        "\t\t\tSint16 x[2], y[2];\n"
+        "\t\t\tfor (int j = 0; j < (*i)->getPoints() - 1; ++j)\n"
+        "\t\t\t{\n"
+        "\t\t\t\t// Don't draw if polyline is facing back\n"
+        "\t\t\t\tif (pointBack((*i)->getLongitude(j), (*i)->getLatitude(j)) || pointBack((*i)->getLongitude(j + 1), (*i)->getLatitude(j + 1)))\n"
+        "\t\t\t\t\tcontinue;\n"
+        "\n"
+        "\t\t\t\t// Convert coordinates\n"
+        "\t\t\t\tpolarToCart((*i)->getLongitude(j), (*i)->getLatitude(j), &x[0], &y[0]);\n"
+        "\t\t\t\tpolarToCart((*i)->getLongitude(j + 1), (*i)->getLatitude(j + 1), &x[1], &y[1]);\n"
+        "\n"
+        "\t\t\t\t_countries->drawLine(x[0], y[0], x[1], y[1], LINE_COLOR);\n"
+        "\t\t\t}\n"
+        "\t\t}\n",
+        "#ifdef __AMIGA__\n"
+        "\t\t{\n"
+        "\t\t\tstd::list<Polyline*> *pl_ = _rules->getPolylines();\n"
+        "\t\t\tstatic std::vector<Sint16> bt_;   /* sinLat, cosLat, sinLon, cosLon per vertex, Q1.14 */\n"
+        "\t\t\tstatic const void *btSrc_ = 0;\n"
+        "\t\t\tstatic size_t btN_ = 0;\n"
+        "\t\t\tsize_t nv_ = 0;\n"
+        "\t\t\tfor (std::list<Polyline*>::iterator i = pl_->begin(); i != pl_->end(); ++i) nv_ += (*i)->getPoints();\n"
+        "\t\t\tif (btSrc_ != (const void *)pl_ || btN_ != nv_)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tbt_.clear();\n"
+        "\t\t\t\tfor (std::list<Polyline*>::iterator i = pl_->begin(); i != pl_->end(); ++i)\n"
+        "\t\t\t\t\tfor (int j = 0; j < (*i)->getPoints(); ++j)\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tbt_.push_back((Sint16)floor(sin((*i)->getLatitude(j)) * 16384.0 + 0.5));\n"
+        "\t\t\t\t\t\tbt_.push_back((Sint16)floor(cos((*i)->getLatitude(j)) * 16384.0 + 0.5));\n"
+        "\t\t\t\t\t\tbt_.push_back((Sint16)floor(sin((*i)->getLongitude(j)) * 16384.0 + 0.5));\n"
+        "\t\t\t\t\t\tbt_.push_back((Sint16)floor(cos((*i)->getLongitude(j)) * 16384.0 + 0.5));\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\tbtSrc_ = (const void *)pl_; btN_ = nv_;\n"
+        "\t\t\t}\n"
+        "\t\t\tconst Sint32 sCLat = (Sint32)floor(sin(_cenLat) * 16384.0 + 0.5);\n"
+        "\t\t\tconst Sint32 cCLat = (Sint32)floor(cos(_cenLat) * 16384.0 + 0.5);\n"
+        "\t\t\tconst Sint32 sCLon = (Sint32)floor(sin(_cenLon) * 16384.0 + 0.5);\n"
+        "\t\t\tconst Sint32 cCLon = (Sint32)floor(cos(_cenLon) * 16384.0 + 0.5);\n"
+        "\t\t\tconst Sint32 radQ = (Sint32)(_radius * 16.0 + 0.5);\n"
+        "\t\t\tsize_t vi = 0;\n"
+        "\t\t\tfor (std::list<Polyline*>::iterator i = pl_->begin(); i != pl_->end(); ++i)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tSint16 px_ = 0, py_ = 0;\n"
+        "\t\t\t\tbool pv_ = false;   /* the previous vertex is on the front */\n"
+        "\t\t\t\tfor (int j = 0; j < (*i)->getPoints(); ++j, vi += 4)\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tconst Sint32 sLat = bt_[vi], cLat = bt_[vi + 1], sLon = bt_[vi + 2], cLon = bt_[vi + 3];\n"
+        "\t\t\t\t\tconst Sint32 cosDiff = (cLon * cCLon + sLon * sCLon) >> 14;\n"
+        "\t\t\t\t\tconst Sint32 vz = ((((cCLat * cLat) >> 14) * cosDiff) >> 14) + ((sCLat * sLat) >> 14);\n"
+        "\t\t\t\t\tif (vz < 0) { pv_ = false; continue; }\n"
+        "\t\t\t\t\tconst Sint32 sinDiff = (sLon * cCLon - cLon * sCLon) >> 14;\n"
+        "\t\t\t\t\tconst Sint32 vx = (cLat * sinDiff) >> 14;\n"
+        "\t\t\t\t\tconst Sint32 vy = ((cCLat * sLat) >> 14) - ((((sCLat * cLat) >> 14) * cosDiff) >> 14);\n"
+        "\t\t\t\t\tconst Sint16 x_ = (Sint16)(_cenX + ((radQ * vx) >> 18));\n"
+        "\t\t\t\t\tconst Sint16 y_ = (Sint16)(_cenY + ((radQ * vy) >> 18));\n"
+        "\t\t\t\t\tif (pv_) _countries->drawLine(px_, py_, x_, y_, LINE_COLOR);\n"
+        "\t\t\t\t\tpx_ = x_; py_ = y_; pv_ = true;\n"
+        "\t\t\t\t}\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "#else\n"
+        "\t\tfor (std::list<Polyline*>::iterator i = _rules->getPolylines()->begin(); i != _rules->getPolylines()->end(); ++i)\n"
+        "\t\t{\n"
+        "\t\t\tSint16 x[2], y[2];\n"
+        "\t\t\tfor (int j = 0; j < (*i)->getPoints() - 1; ++j)\n"
+        "\t\t\t{\n"
+        "\t\t\t\t// Don't draw if polyline is facing back\n"
+        "\t\t\t\tif (pointBack((*i)->getLongitude(j), (*i)->getLatitude(j)) || pointBack((*i)->getLongitude(j + 1), (*i)->getLatitude(j + 1)))\n"
+        "\t\t\t\t\tcontinue;\n"
+        "\n"
+        "\t\t\t\t// Convert coordinates\n"
+        "\t\t\t\tpolarToCart((*i)->getLongitude(j), (*i)->getLatitude(j), &x[0], &y[0]);\n"
+        "\t\t\t\tpolarToCart((*i)->getLongitude(j + 1), (*i)->getLatitude(j + 1), &x[1], &y[1]);\n"
+        "\n"
+        "\t\t\t\t_countries->drawLine(x[0], y[0], x[1], y[1], LINE_COLOR);\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "#endif\n",
+        "fixed-point borders")))
 
     # 5u. drawShadow in fixed point. Measured without JIT (PROGRESS.md): a globe
     #     redraw was ~330 ms, ~280 of them in drawShadow, whose per-pixel loop

@@ -28,6 +28,7 @@ extern int filledCircleRGBA(SDL_Surface *dst, Sint16 x, Sint16 y, Sint16 rad,
 
 /* Port-specific: fill with a palette index (8bpp only). See sdlmini_gfx.c. */
 extern int SDLmini_FilledPolygon8(SDL_Surface *dst, const Sint16 *vx, const Sint16 *vy, int n, Uint8 index);
+extern int SDLmini_Line8(SDL_Surface *dst, Sint16 x1, Sint16 y1, Sint16 x2, Sint16 y2, Uint8 index);
 extern int filledPolygonColor(SDL_Surface *dst, const Sint16 *vx, const Sint16 *vy, int n, Uint32 color);
 
 /* The globe is drawn with this one: a polygon filled from a wrapping texture

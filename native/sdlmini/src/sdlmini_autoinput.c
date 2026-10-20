@@ -121,6 +121,14 @@ static Uint32 run_line(char *line)
 		s_pending_key = sym;
 		return 80;
 	}
+	/* keydown/keyup: a key held for as long as the script says - the
+	 * Geoscape turns the globe for as long as an arrow key is down */
+	if ((strcmp(cmd, "keydown") == 0 || strcmp(cmd, "keyup") == 0) && n >= 2) {
+		int sym = key_by_name(arg1);
+		if (sym == 0) { SDLmini_Log("autoinput: unknown key name"); return 0; }
+		SDLmini_InjectKey(sym, cmd[3] == 'd');
+		return 0;
+	}
 	if (strcmp(cmd, "quit") == 0) {
 		SDL_Event ev;
 		memset(&ev, 0, sizeof(ev));

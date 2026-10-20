@@ -49,6 +49,8 @@ static void put(SDL_Surface *dst, int x, int y, Uint32 pixel)
 /* Defined below, next to the textured fill that shares it. */
 static int poly_spans(SDL_Surface *dst, const Sint16 *vx, const Sint16 *vy, int n,
                       void (*span)(SDL_Surface *, int, int, int, void *), void *ud);
+static void poly_rows(SDL_Surface *dst, const Sint16 *vx, const Sint16 *vy, int n, int ymin, int ymax,
+                      int *xs, void (*span)(SDL_Surface *, int, int, int, void *), void *ud);
 
 int pixelColor(SDL_Surface *dst, Sint16 x, Sint16 y, Uint32 color)
 {
@@ -62,13 +64,27 @@ int pixelRGBA(SDL_Surface *dst, Sint16 x, Sint16 y, Uint8 r, Uint8 g, Uint8 b, U
 	return pixelColor(dst, x, y, ((Uint32)r << 24) | ((Uint32)g << 16) | ((Uint32)b << 8) | a);
 }
 
+static int line_pixel(SDL_Surface *dst, Sint16 x1, Sint16 y1, Sint16 x2, Sint16 y2, Uint32 pixel);
+
 int lineColor(SDL_Surface *dst, Sint16 x1, Sint16 y1, Sint16 x2, Sint16 y2, Uint32 color)
 {
-	int dx, dy, sx, sy, err;
-	Uint32 pixel;
-
 	if (dst == NULL) return -1;
-	pixel = map_color(dst, color);
+	return line_pixel(dst, x1, y1, x2, y2, map_color(dst, color));
+}
+
+/* Port-specific, like SDLmini_FilledPolygon8: a line in a palette INDEX.
+ * The RGBA route searched the palette for every line - every segment of the
+ * globe's country borders - and could land on another index of the same
+ * colour. */
+int SDLmini_Line8(SDL_Surface *dst, Sint16 x1, Sint16 y1, Sint16 x2, Sint16 y2, Uint8 index)
+{
+	if (dst == NULL || dst->format->BitsPerPixel != 8) return -1;
+	return line_pixel(dst, x1, y1, x2, y2, index);
+}
+
+static int line_pixel(SDL_Surface *dst, Sint16 x1, Sint16 y1, Sint16 x2, Sint16 y2, Uint32 pixel)
+{
+	int dx, dy, sx, sy, err;
 
 	dx = (x2 > x1) ? (x2 - x1) : (x1 - x2);
 	dy = (y2 > y1) ? (y2 - y1) : (y1 - y2);
@@ -181,7 +197,7 @@ int filledPolygonColor(SDL_Surface *dst, const Sint16 *vx, const Sint16 *vy, int
 static int poly_spans(SDL_Surface *dst, const Sint16 *vx, const Sint16 *vy, int n,
                       void (*span)(SDL_Surface *, int, int, int, void *), void *ud)
 {
-	int ymin, ymax, y, i;
+	int ymin, ymax, i;
 	int *xs;
 
 	if (dst == NULL || vx == NULL || vy == NULL || n < 3) return -1;
@@ -194,8 +210,22 @@ static int poly_spans(SDL_Surface *dst, const Sint16 *vx, const Sint16 *vy, int 
 	if (ymin < dst->clip_rect.y) ymin = dst->clip_rect.y;
 	if (ymax >= dst->clip_rect.y + dst->clip_rect.h) ymax = dst->clip_rect.y + dst->clip_rect.h - 1;
 
-	xs = (int *)malloc((size_t)n * sizeof(int));
-	if (xs == NULL) return -1;
+	/* the globe fills hundreds of 3-4 point polygons per redraw: their
+	 * crossings live on the stack, not in a malloc/free each */
+	{
+		int local_[16];
+		xs = (n <= 16) ? local_ : (int *)malloc((size_t)n * sizeof(int));
+		if (xs == NULL) return -1;
+		poly_rows(dst, vx, vy, n, ymin, ymax, xs, span, ud);
+		if (xs != local_) free(xs);
+	}
+	return 0;
+}
+
+static void poly_rows(SDL_Surface *dst, const Sint16 *vx, const Sint16 *vy, int n, int ymin, int ymax,
+                      int *xs, void (*span)(SDL_Surface *, int, int, int, void *), void *ud)
+{
+	int y, i;
 
 	for (y = ymin; y <= ymax; y++) {
 		int count = 0;
@@ -217,8 +247,6 @@ static int poly_spans(SDL_Surface *dst, const Sint16 *vx, const Sint16 *vy, int 
 			span(dst, xs[i], xs[i + 1], y, ud);
 		}
 	}
-	free(xs);
-	return 0;
 }
 
 typedef struct {
