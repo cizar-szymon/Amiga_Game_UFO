@@ -8,12 +8,13 @@
 #
 # Scenes and modes: perf-scenes.ps1. tools\perf_summary.py averages the probes.
 param(
-    [Parameter(Mandatory=$true)][ValidateSet('battle','geo','menu','scroll')][string]$Scene,
+    [Parameter(Mandatory=$true)][ValidateSet('battle','geo','menu','scroll','geoq','inv')][string]$Scene,
     [Parameter(Mandatory=$true)][ValidateSet('320','640','n640','mixed')][string]$Res,
     [string]$Binary = 'openxcom-rtg',
     [string]$Tag = '',
     [int]$TimeoutSec = 300,
-    [int]$FrameSkip = -1        # amigaFrameSkip 0/1/2; -1 = leave options.cfg alone
+    [int]$FrameSkip = -1,       # amigaFrameSkip 0/1/2; -1 = leave options.cfg alone
+    [string]$Extra = ''         # more options.cfg values: 'amigaVramLayer=false;amigaScrollOwn=false'
 )
 
 $ufo    = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
@@ -32,8 +33,9 @@ function Lf([string]$path, [string]$text) { [IO.File]::WriteAllText($path, $text
 $optf = "$work\user\options.cfg"
 $opt  = [IO.File]::ReadAllText($optf)
 $opt  = Set-Options $opt ((Get-ModeOptions $Res) + @(,@('amigaPerfLog', 1)) + @(,@('amigaMusic', 0)) +
-                          @(,@('amigaAutoBattle', $(if ($Scene -in 'battle','scroll') { 1 } else { 0 }))))
+                          @(,@('amigaAutoBattle', $(if ($Scene -in 'battle','scroll','geoq','inv') { 1 } else { 0 }))))
 if ($FrameSkip -ge 0) { $opt = Set-Options $opt @(,@('amigaFrameSkip', $FrameSkip)) }
+foreach ($kv in ($Extra -split ';' | Where-Object { $_ })) { $k, $v = $kv -split '=', 2; $opt = Set-Options $opt @(,@($k, $v)) }
 Lf $optf $opt
 
 # 2. fresh emulator (ours only, by saved PID)
@@ -49,7 +51,7 @@ if ("$o" -notmatch '^OK') { "FAIL: AmiAgent did not answer"; exit 1 }
 Lf "$work\t-run" "CD AmiXcom:`nStack 1000000`n$Binary >oxc.log`n"
 Lf "$work\autoinput.on" "on`n"
 python @remote start "Execute AmiXcom:t-run" | Out-Null
-$ready = if ($Scene -in 'battle','scroll') { 'autobattle: in the battlescape' } else { 'state: resetAll done' }
+$ready = if ($Scene -in 'battle','scroll','geoq','inv') { 'autobattle: in the battlescape' } else { 'state: resetAll done' }
 $deadline = (Get-Date).AddSeconds($TimeoutSec)
 do { Start-Sleep 3; $log = Get-Content "$work\oxc.log" -Raw -ErrorAction SilentlyContinue } until ($log -match [regex]::Escape($ready) -or $log -match 'CPU TRAP' -or (Get-Date) -gt $deadline)
 $name = "$Scene-$Res-$Binary$(if ($Tag) { "-$Tag" })"
@@ -65,7 +67,8 @@ if ($Scene -eq 'menu') { Lf "$work\autoinput.txt" "wait 11`nwait 8000`nwait 15`n
 else { Lf "$work\autoinput.txt" (Get-PerfScript $Scene $Res) }
 
 $deadline = (Get-Date).AddSeconds(240)
-do { Start-Sleep 5; $log = Get-Content "$work\oxc.log" -Raw } until ($log -match 'autoinput: script done' -or $log -match 'CPU TRAP' -or (Get-Date) -gt $deadline)
+do { Start-Sleep 5; $log = Get-Content "$work\oxc.log" -Raw; $tt = python @remote titles 2>&1 } until ($log -match 'autoinput: script done' -or $log -match 'CPU TRAP' -or "$tt" -match 'Software Failure' -or (Get-Date) -gt $deadline)
+if ("$tt" -match 'Software Failure') { "CRASH: Software Failure requester" }
 Start-Sleep 4
 Remove-Item "$work\autoinput.on", "$work\autoinput.txt" -ErrorAction SilentlyContinue   # never leave it behind
 

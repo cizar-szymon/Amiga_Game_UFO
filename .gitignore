@@ -19,6 +19,9 @@
 /tools/vrambench/copybench
 /tools/vrambench/copytest
 /tools/vrambench/vrambench
+/tools/vrambench/movetest
+/tools/vrambench/rowbench
+/tools/reboot/reboot
 
 *.cfg
 *.log

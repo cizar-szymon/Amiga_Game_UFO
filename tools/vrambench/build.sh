@@ -6,4 +6,6 @@ m68k-amigaos-gcc -mcpu=68020 -msoft-float -O2 -noixemul -fomit-frame-pointer -Wa
 m68k-amigaos-gcc -mcpu=68020 -msoft-float -O2 -noixemul -fomit-frame-pointer -Wall -Wno-format -o copybench copybench.c -lamiga
 N=../../AmiXcom/native
 m68k-amigaos-gcc -mcpu=68020 -msoft-float -O1 -noixemul -fomit-frame-pointer -Wall -Wno-format -I$N -o copytest copytest.c $N/amiga_copy.c -lamiga
-ls -la vrambench copybench copytest
+m68k-amigaos-gcc -mcpu=68020 -msoft-float -O1 -noixemul -fomit-frame-pointer -Wall -Wno-format -I$N -o movetest movetest.c $N/amiga_copy.c -lamiga
+m68k-amigaos-gcc -mcpu=68020 -msoft-float -O2 -noixemul -fomit-frame-pointer -Wall -Wno-format -I$N -o rowbench rowbench.c $N/amiga_copy.c -lamiga
+ls -la vrambench copybench copytest movetest rowbench

@@ -56,6 +56,16 @@ function Get-PerfScript([string]$Scene, [string]$Res) {
         for ($i = 0; $i -lt 6; $i++) { $s.Add("move $([int]($sw / 2)) 0"); $s.Add("wait 1500"); $s.Add("move $([int]($sw / 2)) $([int]($sh * 0.7))"); $s.Add("wait 1500") }
         $s.Add("move $([int]($sw / 2)) $ym")
         $s.Add("wait 15"); $s.Add("wait 2000")
+    } elseif ($Scene -eq 'inv') {
+        # the inventory and back, twice (maximizeInfoScreens: the screen goes to
+        # 320x200 and back, and the map with it), then some edge scrolling
+        $s.Add("wait 5000"); $s.Add("click $(P 160 100)"); $s.Add("wait 5000")     # dismiss "TURN 1"
+        $s.Add("key tab"); $s.Add("wait 3000")
+        $s.Add("wait 11")
+        for ($i = 0; $i -lt 2; $i++) { $s.Add("key i"); $s.Add("wait 6000"); $s.Add("key esc"); $s.Add("wait 6000") }
+        $s.Add("wait 13")
+        $s.Add("move 639 140"); $s.Add("wait 2000"); $s.Add("move 0 140"); $s.Add("wait 2000"); $s.Add("move 320 140")
+        $s.Add("wait 15"); $s.Add("wait 2000")
     } elseif ($Scene -eq 'geoq') {
         # A real Geoscape, time running: the player's save, copied to
         # user/<ruleset>/_quick_.asav by the caller, quick-loaded with F9 from

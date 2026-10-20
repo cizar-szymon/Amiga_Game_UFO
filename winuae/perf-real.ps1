@@ -3,7 +3,7 @@
 # (tools\make-pkg.ps1 + put + lha x). These are the numbers that count.
 #   .\perf-real.ps1 -Scene battle -Res 320 [-Binary openxcom-rtg] [-Tag r1]
 param(
-    [Parameter(Mandatory=$true)][ValidateSet('battle','geo','geoq','scroll')][string]$Scene,
+    [Parameter(Mandatory=$true)][ValidateSet('battle','geo','geoq','scroll','inv')][string]$Scene,
     [Parameter(Mandatory=$true)][ValidateSet('320','640','n640','mixed')][string]$Res,
     [string]$Binary = 'openxcom-rtg',
     [string]$Tag = '',
@@ -12,13 +12,16 @@ param(
     [int]$TimeoutSec = 480,     # scene + quit
     [switch]$KeepOptions,       # leave the test options in place afterwards
     [int]$FrameSkip = -1,       # amigaFrameSkip 0/1/2; -1 = leave options.cfg alone
-    [string]$QuickSave = 'geoscape5sec.sav'   # geoq: the save F9 loads
+    [string]$QuickSave = 'geoscape5sec.sav',  # geoq: the save F9 loads
+    [string]$Extra = '',        # more options.cfg values: 'amigaMapVerify=1;amigaScrollOwn=false'
+    [string]$Config = ''        # AmiAgent config of another Amiga, e.g. C:/amiga-dev/amiagent-2.cfg
 )
 
 $ufo    = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $outdir = "$ufo\winuae\perf-real"
 $tmp    = "$outdir\tmp"
 $remote = @("$ufo\tools\amiga_remote.py")
+if ($Config) { $remote += @('--config', $Config) }
 New-Item -ItemType Directory -Force $tmp | Out-Null
 . "$ufo\winuae\perf-scenes.ps1"
 
@@ -45,6 +48,7 @@ $opt = [IO.File]::ReadAllText("$tmp\options.cfg")
 $opt = Set-Options $opt ((Get-ModeOptions $Res) + @(,@('amigaPerfLog', 1)) + @(,@('amigaMusic', 0)) +
                          @(,@('amigaAutoBattle', $(if ($Scene -ne 'geo') { 1 } else { 0 }))))
 if ($FrameSkip -ge 0) { $opt = Set-Options $opt @(,@('amigaFrameSkip', $FrameSkip)) }
+foreach ($kv in ($Extra -split ';' | Where-Object { $_ })) { $k, $v = $kv -split '=', 2; $opt = Set-Options $opt @(,@($k, $v)) }
 Lf "$tmp\options.cfg" $opt
 python @remote put "$tmp\options.cfg" "$Dir/user/options.cfg" | Out-Null
 if ($Scene -eq 'geoq') {
@@ -66,6 +70,12 @@ python @remote start "Execute $Dir/t-run" | Out-Null
 #    time to load instead (first start with the yaml cache build: 79 s to the
 #    menu on the Warp), then send the scene ending in "quit" and read the log
 #    afterwards. perf_summary.py shows whether every phase got measured.
+# The window opens late after a clean build (the yaml cache is rebuilt
+# first): wait for it to appear before waiting for it to be loaded, or a
+# not-yet-open window reads as a crash and the run cleans up under a game
+# that then starts with the test options (2026-10-20).
+$deadline = (Get-Date).AddSeconds(240)
+do { Start-Sleep 5; $t = python @remote titles 2>&1 } until ("$t" -match 'AmiXcom 68K' -or (Get-Date) -gt $deadline)
 $deadline = (Get-Date).AddSeconds($ReadySec)
 do { Start-Sleep 10; $t = python @remote titles 2>&1 } until ("$t" -notmatch 'AmiXcom 68K' -or (Get-Date) -gt $deadline)
 if ("$t" -notmatch 'AmiXcom 68K') { "FAIL: the game window is gone before the scene (crash?)" }
