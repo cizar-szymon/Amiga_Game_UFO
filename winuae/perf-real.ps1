@@ -3,7 +3,7 @@
 # (tools\make-pkg.ps1 + put + lha x). These are the numbers that count.
 #   .\perf-real.ps1 -Scene battle -Res 320 [-Binary openxcom-rtg] [-Tag r1]
 param(
-    [Parameter(Mandatory=$true)][ValidateSet('battle','geo','geoq','scroll','inv')][string]$Scene,
+    [Parameter(Mandatory=$true)][ValidateSet('battle','geo','geoq','scroll','inv','geohold')][string]$Scene,
     [Parameter(Mandatory=$true)][ValidateSet('320','640','n640','mixed')][string]$Res,
     [string]$Binary = 'openxcom-rtg',
     [string]$Tag = '',
@@ -46,7 +46,7 @@ python @remote get "$Dir/user/options.cfg" "$tmp\options.cfg" | Out-Null
 Copy-Item "$tmp\options.cfg" "$tmp\options-player.cfg" -Force   # put back after the run
 $opt = [IO.File]::ReadAllText("$tmp\options.cfg")
 $opt = Set-Options $opt ((Get-ModeOptions $Res) + @(,@('amigaPerfLog', 1)) + @(,@('amigaMusic', 0)) +
-                         @(,@('amigaAutoBattle', $(if ($Scene -ne 'geo') { 1 } else { 0 }))))
+                         @(,@('amigaAutoBattle', $(if ($Scene -notin 'geo','geohold') { 1 } else { 0 }))))
 if ($FrameSkip -ge 0) { $opt = Set-Options $opt @(,@('amigaFrameSkip', $FrameSkip)) }
 foreach ($kv in ($Extra -split ';' | Where-Object { $_ })) { $k, $v = $kv -split '=', 2; $opt = Set-Options $opt @(,@($k, $v)) }
 Lf "$tmp\options.cfg" $opt

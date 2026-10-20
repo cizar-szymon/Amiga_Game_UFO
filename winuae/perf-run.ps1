@@ -8,7 +8,7 @@
 #
 # Scenes and modes: perf-scenes.ps1. tools\perf_summary.py averages the probes.
 param(
-    [Parameter(Mandatory=$true)][ValidateSet('battle','geo','menu','scroll','geoq','inv')][string]$Scene,
+    [Parameter(Mandatory=$true)][ValidateSet('battle','geo','menu','scroll','geoq','inv','geohold')][string]$Scene,
     [Parameter(Mandatory=$true)][ValidateSet('320','640','n640','mixed')][string]$Res,
     [string]$Binary = 'openxcom-rtg',
     [string]$Tag = '',

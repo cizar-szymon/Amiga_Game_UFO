@@ -9,7 +9,7 @@
 #   mixed - amigaNativeScale: Geoscape on a 320x200 screen, battles on a
 #          native 640x400 one (the screen switches between them)
 function Get-PerfScript([string]$Scene, [string]$Res) {
-    if ($Res -eq 'mixed') { $Res = if ($Scene -eq 'geo') { '320' } else { 'n640' } }
+    if ($Res -eq 'mixed') { $Res = if ($Scene -in 'geo','geohold') { '320' } else { 'n640' } }
     function P([int]$x, [int]$y) {
         if ($Res -eq '640') { "$($x * 2) $($y * 2 + 40)" }
         elseif ($Res -eq 'n640') { "$($x + 160) $($y + 100)" }
@@ -55,6 +55,22 @@ function Get-PerfScript([string]$Scene, [string]$Res) {
         $s.Add("wait 14")                                                            # phase 14: up-down (top edge / just above the icons)
         for ($i = 0; $i -lt 6; $i++) { $s.Add("move $([int]($sw / 2)) 0"); $s.Add("wait 1500"); $s.Add("move $([int]($sw / 2)) $([int]($sh * 0.7))"); $s.Add("wait 1500") }
         $s.Add("move $([int]($sw / 2)) $ym")
+        $s.Add("wait 15"); $s.Add("wait 2000")
+    } elseif ($Scene -eq 'geohold') {
+        # the globe turned with an arrow key HELD down (keydown/keyup), as a
+        # player does: new game, base site selection
+        $s.Add("wait 2000"); $s.Add("click $(P 100 100)"); $s.Add("wait 3000")     # New Game
+        $s.Add("click $(P 110 42)"); $s.Add("wait 1500")                           # Beginner
+        $s.Add("click $(P 118 172)"); $s.Add("wait 12000")                         # OK -> select base site
+        $s.Add("move $(P 160 190)")
+        $s.Add("wait 11"); $s.Add("wait 8000")                                       # phase 11: still
+        $s.Add("wait 12")                                                            # phase 12: held arrows
+        $s.Add("keydown left"); $s.Add("wait 8000"); $s.Add("keyup left"); $s.Add("wait 500")
+        $s.Add("keydown up"); $s.Add("wait 4000"); $s.Add("keyup up"); $s.Add("wait 500")
+        $s.Add("key +"); $s.Add("wait 2500"); $s.Add("key +"); $s.Add("wait 2500")
+        $s.Add("wait 13")                                                            # phase 13: held arrows, zoomed in
+        $s.Add("keydown right"); $s.Add("wait 8000"); $s.Add("keyup right"); $s.Add("wait 500")
+        $s.Add("keydown down"); $s.Add("wait 4000"); $s.Add("keyup down")
         $s.Add("wait 15"); $s.Add("wait 2000")
     } elseif ($Scene -eq 'inv') {
         # the inventory and back, twice (maximizeInfoScreens: the screen goes to
