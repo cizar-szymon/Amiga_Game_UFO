@@ -53,14 +53,19 @@ else
 	CPU="-mcpu=68020 -msoft-float"
 	FPUSUF=""
 fi
-# AMIGA_TUNE060=1 adds -mtune=68060 (code still runs on a 68020). With plain
-# -mcpu=68020 gcc turns every division by a constant into a 64-bit MULS.L/MULU.L
-# (multiply by the reciprocal, Dh:Dl result) - an instruction the 68060 does
-# not have: each one traps into 68060.library and is emulated. Tuned for the
-# 060, gcc emits a plain 32-bit DIVS.L/DIVU.L instead, which the 060 executes.
-# Objects and binaries get a -t060 suffix so the normal build is untouched.
+# -mtune=68060, always (2026-10-21: the game is built for 68040/68060 machines;
+# the code still runs on a 68020). With plain -mcpu=68020 gcc turns every
+# division by a constant into a 64-bit MULS.L/MULU.L (multiply by the
+# reciprocal, Dh:Dl result) - an instruction the 68060 does not have: each one
+# traps into 68060.library and is emulated (~1.3 us). Tuned for the 060, gcc
+# emits a plain 32-bit DIVS.L/DIVU.L instead. It matters in TileEngine:
+# voxelCheck divides by 24 several times per voxel of every sight ray. Warp4070,
+# misja4, shooting: an alien FOV with 2-3 sight checks 60-140 -> 0-20 ms, the
+# FOV after a bullet impact 185-241 -> 67-115 ms. -mcpu=68040 is not an option
+# here (it selects the 68881 multilib, see the top of this file).
+# AMIGA_TUNE060=1 is kept for old scripts: same flags, -t060 file names.
+CPU="$CPU -mtune=68060"
 if [ "$AMIGA_TUNE060" = "1" ]; then
-	CPU="$CPU -mtune=68060"
 	TUNESUF="-t060"
 else
 	TUNESUF=""
