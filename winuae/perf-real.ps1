@@ -39,7 +39,7 @@ function Get-Log() {
 $o = python @remote ping 2>&1
 if ("$o" -notmatch '^OK') { "FAIL: AmiAgent did not answer: $o"; exit 1 }
 $t = python @remote titles 2>&1
-if ("$t" -match 'AmiXcom 68K') { "FAIL: AmiXcom is already running on the Amiga"; exit 1 }
+if ("$t" -match 'AmiXcom( 68K| \d)') { "FAIL: AmiXcom is already running on the Amiga"; exit 1 }
 
 # 1. options for this run (from the copy on the Amiga, so the player's other settings stay)
 python @remote get "$Dir/user/options.cfg" "$tmp\options.cfg" | Out-Null
@@ -75,13 +75,13 @@ python @remote start "Execute $Dir/t-run" | Out-Null
 # not-yet-open window reads as a crash and the run cleans up under a game
 # that then starts with the test options (2026-10-20).
 $deadline = (Get-Date).AddSeconds(240)
-do { Start-Sleep 5; $t = python @remote titles 2>&1 } until ("$t" -match 'AmiXcom 68K' -or (Get-Date) -gt $deadline)
+do { Start-Sleep 5; $t = python @remote titles 2>&1 } until ("$t" -match 'AmiXcom( 68K| \d)' -or (Get-Date) -gt $deadline)
 $deadline = (Get-Date).AddSeconds($ReadySec)
-do { Start-Sleep 10; $t = python @remote titles 2>&1 } until ("$t" -notmatch 'AmiXcom 68K' -or (Get-Date) -gt $deadline)
-if ("$t" -notmatch 'AmiXcom 68K') { "FAIL: the game window is gone before the scene (crash?)" }
+do { Start-Sleep 10; $t = python @remote titles 2>&1 } until ("$t" -notmatch 'AmiXcom( 68K| \d)' -or (Get-Date) -gt $deadline)
+if ("$t" -notmatch 'AmiXcom( 68K| \d)') { "FAIL: the game window is gone before the scene (crash?)" }
 Put "autoinput.txt" ((Get-PerfScript $Scene $Res) + "quit`n")
 $deadline = (Get-Date).AddSeconds($TimeoutSec)
-do { Start-Sleep 10; $t = python @remote titles 2>&1 } until ("$t" -notmatch 'AmiXcom 68K' -or (Get-Date) -gt $deadline)
+do { Start-Sleep 10; $t = python @remote titles 2>&1 } until ("$t" -notmatch 'AmiXcom( 68K| \d)' -or (Get-Date) -gt $deadline)
 Start-Sleep 3
 $log = Get-Log
 foreach ($m in 'splash: 99% at \d+ ms', 'autobattle: in the battlescape', 'autoinput: script loaded', 'autoinput: quit') {
@@ -99,5 +99,5 @@ $name = "$Scene-$Res-$Binary$(if ($Tag) { "-$Tag" })"
 Copy-Item "$tmp\oxc.log" "$outdir\$name.log"
 if ($log -match 'CPU TRAP') { "WARNING: CPU TRAP during the run" }
 $still = python @remote titles 2>&1
-if ("$still" -match 'AmiXcom 68K') { "WARNING: the game is still running on the Amiga" }
+if ("$still" -match 'AmiXcom( 68K| \d)') { "WARNING: the game is still running on the Amiga" }
 python "$ufo\tools\perf_summary.py" "$outdir\$name.log"

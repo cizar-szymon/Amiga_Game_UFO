@@ -22,8 +22,8 @@ function Start-Game([string]$Binary) {
     python @script:remote put "$script:tmp\t-run" "$script:dir/t-run" | Out-Null
     python @script:remote start "Execute $script:dir/t-run" | Out-Null
     $deadline = (Get-Date).AddSeconds(240)
-    do { Start-Sleep 5; $t = python @script:remote titles 2>&1 } until ("$t" -match 'AmiXcom 68K' -or (Get-Date) -gt $deadline)
-    if ("$t" -match 'AmiXcom 68K') { "game window open" } else { "NO WINDOW" }
+    do { Start-Sleep 5; $t = python @script:remote titles 2>&1 } until ("$t" -match 'AmiXcom( 68K| \d)' -or (Get-Date) -gt $deadline)
+    if ("$t" -match 'AmiXcom( 68K| \d)') { "game window open" } else { "NO WINDOW" }
 }
 
 # send a script and wait until the game has run it (file gone)

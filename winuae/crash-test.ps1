@@ -19,7 +19,7 @@ if ($Config) { $remote += @('--config', $Config) }
 function Lf([string]$path, [string]$text) { [IO.File]::WriteAllText($path, $text.Replace("`r`n", "`n")) }
 
 $t = python @remote titles 2>&1
-if ("$t" -match 'AmiXcom 68K|Software Failure') { "FAIL: the Amiga is not idle: $t"; exit 1 }
+if ("$t" -match 'AmiXcom( 68K| \d)|Software Failure') { "FAIL: the Amiga is not idle: $t"; exit 1 }
 
 python @remote get "$Dir/user/options.cfg" "$tmp\options.cfg" | Out-Null
 Copy-Item "$tmp\options.cfg" "$tmp\options-player.cfg" -Force
@@ -34,8 +34,8 @@ python @remote put "$tmp\t-run" "$Dir/t-run" | Out-Null
 python @remote start "Execute $Dir/t-run" | Out-Null
 
 $deadline = (Get-Date).AddSeconds(240)
-do { Start-Sleep 5; $t = python @remote titles 2>&1 } until ("$t" -match 'AmiXcom 68K' -or (Get-Date) -gt $deadline)
-if ("$t" -notmatch 'AmiXcom 68K') { "FAIL: no game window" }
+do { Start-Sleep 5; $t = python @remote titles 2>&1 } until ("$t" -match 'AmiXcom( 68K| \d)' -or (Get-Date) -gt $deadline)
+if ("$t" -notmatch 'AmiXcom( 68K| \d)') { "FAIL: no game window" }
 Start-Sleep 60          # loading into the auto battle
 Start-Sleep $RunSec
 $t = python @remote titles 2>&1
@@ -44,7 +44,7 @@ python @remote stop $Binary | Out-Null
 Start-Sleep 25
 $t = python @remote titles 2>&1
 $result = if ("$t" -match 'Software Failure') { "CRASH (Software Failure$(if ($crashedEarly) { ', already before Ctrl-C' }))" }
-          elseif ("$t" -match 'AmiXcom 68K') { "STILL RUNNING after Ctrl-C" } else { "clean exit" }
+          elseif ("$t" -match 'AmiXcom( 68K| \d)') { "STILL RUNNING after Ctrl-C" } else { "clean exit" }
 if ($result -match 'CRASH') { python @remote shot "$ufo\winuae\perf-real\crash-$Binary.png" | Out-Null }
 python @remote put "$tmp\options-player.cfg" "$Dir/user/options.cfg" | Out-Null
 "$Binary [$Extra]: $result"
