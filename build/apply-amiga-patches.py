@@ -3392,6 +3392,7 @@ def main():
         'static unsigned long AmCp_full = 0, AmCp_fullMs = 0, AmCp_part = 0, AmCp_partMs = 0, AmCp_hit = 0, AmCp_partPx = 0, AmCp_partTiles = 0, AmCp_partBlits = 0, AmCp_partRects = 0, AmCp_fullBlits = 0;\n'
         'static unsigned long AmCp_whySig = 0, AmCp_whyMiss = 0, AmCp_whyUnits = 0, AmCp_whyCur = 0, AmCp_whyProj = 0, AmCp_whyExpl = 0, AmCp_whyScroll = 0;\n'
         'static unsigned long AmCp_whyLight = 0, AmCp_lightTiles = 0, AmCp_diff = 0, AmCp_diffPx = 0;\n'
+        'static unsigned long AmCp_pjMs = 0, AmCp_pjPx = 0, AmCp_pjBox = 0, AmCp_exMs = 0, AmCp_exPx = 0, AmCp_exBox = 0;   /* probe: bullet / explosion repairs */\n'
         'static unsigned long AmCp_lastSig = 0;\n'
         'static unsigned long AmSg_[16], AmSgN_ = 0;   /* sig probe: per-component last values */\n'
         '#endif\n',
@@ -3888,6 +3889,7 @@ def main():
         "\tPosition getPosition(int offset = 0) const;\n"
         "#ifdef __AMIGA__\n"
         "\tint amigaTrajIndex() const { return (int)_position; }\n"
+        "\tint amigaTrajSize() const { return (int)_trajectory.size(); }\n"
         "#endif\n",
         "trail ends accessor")))
 
@@ -3895,6 +3897,13 @@ def main():
     #     trail particles are computed per TILE of the trail's bounding box on
     #     every compose (dozens of voxel walks each). They depend only on the
     #     particle, so compute once per compose and look up.
+    #     6z-shot2 (2026-10-21): once per FLIGHT. The results depend only on the
+    #     trajectory point and the terrain and units, none of which change while
+    #     a bullet flies, yet "once per compose" was still every repair box of
+    #     every frame, and the bullet's own isVoxelVisible was not cached at
+    #     all: a bullet repair cost ~2.5 us a pixel against ~0.8 for a walk
+    #     (Warp4070, misja4: 45-88 ms a box). Now keyed by trajectory index,
+    #     reset for a new projectile.
     results.append(("Map.cpp (bullet shade cache decl)", edit(
         os.path.join(src, "Battlescape", "Map.cpp"),
         "void Map::drawTerrain(Surface *surface)\n"
@@ -3902,11 +3911,52 @@ def main():
         "void Map::drawTerrain(Surface *surface)\n"
         "{\n"
         "#ifdef __AMIGA__\n"
-        "\t/* bullet shade cache - see the patch script */\n"
-        "\tint bsZ_[BULLET_SPRITES]; signed char bsVis_[BULLET_SPRITES]; signed char bsOk_[BULLET_SPRITES];\n"
-        "\tfor (int bi_ = 0; bi_ < BULLET_SPRITES; ++bi_) bsOk_[bi_] = 0;\n"
+        "\t/* bullet shade cache, per flight - see the patch script (6z-pre1) */\n"
+        "\tif (_projectile)\n"
+        "\t{\n"
+        "\t\tconst int n_ = _projectile->amigaTrajSize();\n"
+        "\t\tconst Position p0_ = _projectile->getPosition(-_projectile->amigaTrajIndex());\n"
+        "\t\tif (amBsOwner_ != (const void *)_projectile || !(amBsP0_ == p0_) || (int)amBsZ_.size() != n_)\n"
+        "\t\t{\n"
+        "\t\t\tamBsOwner_ = (const void *)_projectile; amBsP0_ = p0_;\n"
+        "\t\t\tamBsZ_.assign((size_t)n_, 0); amBsSh_.assign((size_t)n_, (signed char)-1); amBsBv_.assign((size_t)n_, (signed char)-1);\n"
+        "\t\t}\n"
+        "\t}\n"
         "#endif\n",
         "bullet shade cache decl")))
+    results.append(("Map.cpp (bullet shade cache storage)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "void Map::drawTerrain(Surface *surface)\n"
+        "{\n",
+        "#ifdef __AMIGA__\n"
+        "/* per trajectory point: shadow z, shadow visible, bullet visible (-1 = not yet) */\n"
+        "static const void *amBsOwner_ = 0;\n"
+        "static Position amBsP0_;\n"
+        "static std::vector<int> amBsZ_;\n"
+        "static std::vector<signed char> amBsSh_, amBsBv_;\n"
+        "#endif\n"
+        "void Map::drawTerrain(Surface *surface)\n"
+        "{\n",
+        "bullet shade cache storage")))
+    results.append(("Map.cpp (bullet visibility cache)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\t\t\t\t\t\t\t\t// draw bullet itself\n"
+        "\t\t\t\t\t\t\t\t\t\tvoxelPos = _projectile->getPosition(1-i);\n"
+        "\t\t\t\t\t\t\t\t\t\tif (voxelPos.x / 16 == itX &&\n"
+        "\t\t\t\t\t\t\t\t\t\t\tvoxelPos.y / 16 == itY &&\n"
+        "\t\t\t\t\t\t\t\t\t\t\tvoxelPos.z / 24 == itZ &&\n"
+        "\t\t\t\t\t\t\t\t\t\t\t_save->getTileEngine()->isVoxelVisible(voxelPos))\n",
+        "\t\t\t\t\t\t\t\t\t\t// draw bullet itself\n"
+        "\t\t\t\t\t\t\t\t\t\tvoxelPos = _projectile->getPosition(1-i);\n"
+        "\t\t\t\t\t\t\t\t\t\tif (voxelPos.x / 16 == itX &&\n"
+        "\t\t\t\t\t\t\t\t\t\t\tvoxelPos.y / 16 == itY &&\n"
+        "\t\t\t\t\t\t\t\t\t\t\tvoxelPos.z / 24 == itZ &&\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t\t\t\t\t\t\t\t\t\t(amBsBv_[ti_] >= 0 ? amBsBv_[ti_] : (amBsBv_[ti_] = _save->getTileEngine()->isVoxelVisible(voxelPos) ? 1 : 0)))\n"
+        "#else\n"
+        "\t\t\t\t\t\t\t\t\t\t\t_save->getTileEngine()->isVoxelVisible(voxelPos))\n"
+        "#endif\n",
+        "bullet visibility cache")))
     results.append(("Map.cpp (bullet shade cache use)", edit(
         os.path.join(src, "Battlescape", "Map.cpp"),
         "\t\t\t\t\t\t\t\t\t\tPosition voxelPos = _projectile->getPosition(1-i);\n"
@@ -3921,9 +3971,11 @@ def main():
         "#ifdef __AMIGA__\n"
         "\t\t\t\t\t\t\t\t\t\t/* cheap reject first: the particle's tile column */\n"
         "\t\t\t\t\t\t\t\t\t\tif (voxelPos.x / 16 != itX || voxelPos.y / 16 != itY) continue;\n"
-        "\t\t\t\t\t\t\t\t\t\tif (!bsOk_[i]) { bsZ_[i] = _save->getTileEngine()->castedShade(voxelPos); Position sv_ = voxelPos; sv_.z = bsZ_[i]; bsVis_[i] = _save->getTileEngine()->isVoxelVisible(sv_) ? 1 : 0; bsOk_[i] = 1; }\n"
-        "\t\t\t\t\t\t\t\t\t\tvoxelPos.z = bsZ_[i];\n"
-        "\t\t\t\t\t\t\t\t\t\tif (voxelPos.z / 24 == itZ && bsVis_[i])\n"
+        "\t\t\t\t\t\t\t\t\t\tint ti_ = _projectile->amigaTrajIndex() + 1 - i;   /* as getPosition(1-i) picks it */\n"
+        "\t\t\t\t\t\t\t\t\t\tif (ti_ < 0 || ti_ >= (int)amBsZ_.size()) ti_ = _projectile->amigaTrajIndex();\n"
+        "\t\t\t\t\t\t\t\t\t\tif (amBsSh_[ti_] < 0) { amBsZ_[ti_] = _save->getTileEngine()->castedShade(voxelPos); Position sv_ = voxelPos; sv_.z = amBsZ_[ti_]; amBsSh_[ti_] = _save->getTileEngine()->isVoxelVisible(sv_) ? 1 : 0; }\n"
+        "\t\t\t\t\t\t\t\t\t\tvoxelPos.z = amBsZ_[ti_];\n"
+        "\t\t\t\t\t\t\t\t\t\tif (voxelPos.z / 24 == itZ && amBsSh_[ti_])\n"
         "#else\n"
         "\t\t\t\t\t\t\t\t\t\tvoxelPos.z = _save->getTileEngine()->castedShade(voxelPos);\n"
         "\t\t\t\t\t\t\t\t\t\tif (voxelPos.x / 16 == itX &&\n"
@@ -4207,13 +4259,14 @@ def main():
         "extern \"C\" void AmigaCacheReport(char *b, unsigned long n)\n"
         "{\n"
         "\t/* TEMP cache probe: per 100 frames, how Map::draw resolved and what it cost */\n"
-        "\tsnprintf(b, n, \"cache: hit %lu | partial %lu/%lu rects (%lu ms, %lu px, %lu tiles, %lu blits) | full %lu (%lu ms, %lu blits) | why: sig %lu miss %lu units %lu cur %lu proj %lu expl %lu scroll %lu light %lu/%lu | diff %lu (%lu px)\",\n"
+        "\tsnprintf(b, n, \"cache: hit %lu | partial %lu/%lu rects (%lu ms, %lu px, %lu tiles, %lu blits) | full %lu (%lu ms, %lu blits) | why: sig %lu miss %lu units %lu cur %lu proj %lu expl %lu scroll %lu light %lu/%lu | diff %lu (%lu px) | bullet %lu boxes %lu ms %lu px, expl %lu boxes %lu ms %lu px\",\n"
         "\t\tAmCp_hit, AmCp_part, AmCp_partRects, AmCp_partMs, AmCp_partPx, AmCp_partTiles, AmCp_partBlits, AmCp_full, AmCp_fullMs, AmCp_fullBlits,\n"
         "\t\tAmCp_whySig, AmCp_whyMiss, AmCp_whyUnits, AmCp_whyCur, AmCp_whyProj, AmCp_whyExpl, AmCp_whyScroll,\n"
-        "\t\tAmCp_whyLight, AmCp_lightTiles, AmCp_diff, AmCp_diffPx);\n"
+        "\t\tAmCp_whyLight, AmCp_lightTiles, AmCp_diff, AmCp_diffPx, AmCp_pjBox, AmCp_pjMs, AmCp_pjPx, AmCp_exBox, AmCp_exMs, AmCp_exPx);\n"
         "\tAmCp_hit = AmCp_part = AmCp_partMs = AmCp_partPx = AmCp_partTiles = AmCp_full = AmCp_fullMs = AmCp_partBlits = AmCp_partRects = AmCp_fullBlits = 0;\n"
         "\tAmCp_whySig = AmCp_whyMiss = AmCp_whyUnits = AmCp_whyCur = AmCp_whyProj = AmCp_whyExpl = AmCp_whyScroll = 0;\n"
         "\tAmCp_whyLight = AmCp_lightTiles = AmCp_diff = AmCp_diffPx = 0;\n"
+        "\tAmCp_pjMs = AmCp_pjPx = AmCp_pjBox = AmCp_exMs = AmCp_exPx = AmCp_exBox = 0;\n"
         "}\n"
         "#endif\n"
         "\n"
@@ -5269,7 +5322,11 @@ def main():
         "\t\t\t\t\tfor (int y_ = y0; y_ < y1; ++y_) { memset(cp_, Palette::blockOffset(0)+15, x1 - x0); cp_ += d_->pitch; }\n"
         "\t\t\t\t\tUint32 t0_ = SDL_GetTicks(); unsigned long tb_ = AmigaTileN, bb_ = AmigaShadeThruN;\n"
         "\t\t\t\t\tamigaComposeVisible();\n"
-        "\t\t\t\t\t{ Uint32 dd_ = SDL_GetTicks() - t0_; AmCp_partMs += dd_; AmCp_partTiles += AmigaTileN - tb_; AmCp_partBlits += AmigaShadeThruN - bb_; }\n"
+        "\t\t\t\t\t{ Uint32 dd_ = SDL_GetTicks() - t0_; AmCp_partMs += dd_; AmCp_partTiles += AmigaTileN - tb_; AmCp_partBlits += AmigaShadeThruN - bb_;\n"
+        "\t\t\t\t\t  /* probe: the repairs of frames with a bullet in flight / an explosion */\n"
+        "\t\t\t\t\t  unsigned long bp_ = (unsigned long)(x1 - x0) * (unsigned long)(y1 - y0);\n"
+        "\t\t\t\t\t  if (_projectile) { AmCp_pjMs += dd_; AmCp_pjPx += bp_; AmCp_pjBox++; }\n"
+        "\t\t\t\t\t  else if (!_explosions.empty()) { AmCp_exMs += dd_; AmCp_exPx += bp_; AmCp_exBox++; } }\n"
         "\t\t\t\t\tAmigaDirtyGrid = 0;\n"
         "\t\t\t\t\tbool othV_ = false;   /* nothing to propagate into when no other phase is valid */\n"
         "\t\t\t\t\tfor (int i_ = 0; i_ < 8; ++i_) if (i_ != ph_ && _fcValid[i_]) othV_ = true;\n"
@@ -7490,7 +7547,7 @@ def main():
     results.append(("Engine/Game.cpp (us probe report)", edit(
         os.path.join(src, "Engine", "Game.cpp"),
         "\t\t\t\t\t\t\tif (AmigaMapMs > 0 || AmigaCacheHitN() > 0) { char cb_[224]; AmigaCacheReport(cb_, sizeof cb_); SDLmini_Log(cb_); }\n",
-        "\t\t\t\t\t\t\tif (Options::amigaPerfLog && (AmigaMapMs > 0 || AmigaCacheHitN() > 0)) { char cb_[320]; AmigaCacheReport(cb_, sizeof cb_); SDLmini_Log(cb_);\n"
+        "\t\t\t\t\t\t\tif (Options::amigaPerfLog && (AmigaMapMs > 0 || AmigaCacheHitN() > 0)) { char cb_[400]; AmigaCacheReport(cb_, sizeof cb_); SDLmini_Log(cb_);\n"
         "\t\t\t\t\t\t\t\tchar ub_[400]; AmigaUsReport(ub_, sizeof ub_); SDLmini_Log(ub_);\n"
         "\t\t\t\t\t\t\t\tsnprintf(ub_, sizeof ub_, \"us2: 100 fr: think %lu | blit %lu = terr %lu + scrblit big %lu/%lu small %lu/%lu classify %lu fill %lu + rest | flip %lu (us)\",\n"
         "\t\t\t\t\t\t\t\t\tAmUs_think, AmUs_blit, AmigaTerrUs, SDLmini_ProfBlitBigUs, SDLmini_ProfBlitBigN, SDLmini_ProfBlitSmallUs, SDLmini_ProfBlitSmallN, SDLmini_ProfClassifyUs, SDLmini_ProfFillUs, AmUs_flip);\n"
@@ -9209,6 +9266,125 @@ def main():
         "\treturn spotters;\n"
         "}\n",
         "reaction probe report")))
+
+    # Build number (2026-10-21): the commit count of the tree the binary was
+    #     built from, in small digits under the FPS counter and always shown,
+    #     so a screenshot or a report says which build it was. The number
+    #     comes from native/amiga_buildid.h, written by the build script on
+    #     the host (not in the repository); without it the number is 0.
+    results.append(("Interface/FpsCounter.h (build number)", edit(
+        os.path.join(src, "Interface", "FpsCounter.h"),
+        "\tint _frames;\n",
+        "\tint _frames;\n"
+        "#ifdef __AMIGA__\n"
+        "\tNumberText *_amBuild;   /* the build number, drawn under the FPS */\n"
+        "\tbool _amShown;          /* the FPS itself is drawn (Options::fpsCounter) */\n"
+        "public:\n"
+        "\t/// Draws the build number always and the FPS when it is switched on.\n"
+        "\tvoid amigaBlit(Surface *surface);\n"
+        "private:\n"
+        "#endif\n",
+        "build number members")))
+    results.append(("Interface/FpsCounter.cpp (build number include)", edit(
+        os.path.join(src, "Interface", "FpsCounter.cpp"),
+        '#include "NumberText.h"\n',
+        '#include "NumberText.h"\n'
+        '#ifdef __AMIGA__\n'
+        '#if defined(__has_include)\n'
+        '#if __has_include("amiga_buildid.h")\n'
+        '#include "amiga_buildid.h"\n'
+        '#endif\n'
+        '#endif\n'
+        '#ifndef AMIGA_BUILD_NUM\n'
+        '#define AMIGA_BUILD_NUM 0\n'
+        '#define AMIGA_BUILD_ID "unknown"\n'
+        '#endif\n'
+        'extern "C" void SDLmini_Log(const char *msg);\n'
+        '#endif\n',
+        "build number include")))
+    results.append(("Interface/FpsCounter.cpp (build number create)", edit(
+        os.path.join(src, "Interface", "FpsCounter.cpp"),
+        "\t_text = new NumberText(width, height, x, y);\n"
+        "}\n",
+        "\t_text = new NumberText(width, height, x, y);\n"
+        "#ifdef __AMIGA__\n"
+        "\t_amBuild = new NumberText(width, 5, x, y + 6);\n"
+        "\t_amBuild->setValue(AMIGA_BUILD_NUM);\n"
+        "\t_amShown = _visible;\n"
+        "\tSDLmini_Log(\"build: \" AMIGA_BUILD_ID);\n"
+        "#endif\n"
+        "}\n",
+        "build number create")))
+    results.append(("Interface/FpsCounter.cpp (build number delete)", edit(
+        os.path.join(src, "Interface", "FpsCounter.cpp"),
+        "\tdelete _text;\n"
+        "\tdelete _timer;\n",
+        "\tdelete _text;\n"
+        "\tdelete _timer;\n"
+        "#ifdef __AMIGA__\n"
+        "\tdelete _amBuild;\n"
+        "#endif\n",
+        "build number delete")))
+    results.append(("Interface/FpsCounter.cpp (build number palette)", edit(
+        os.path.join(src, "Interface", "FpsCounter.cpp"),
+        "\t_text->setPalette(colors, firstcolor, ncolors);\n",
+        "\t_text->setPalette(colors, firstcolor, ncolors);\n"
+        "#ifdef __AMIGA__\n"
+        "\t_amBuild->setPalette(colors, firstcolor, ncolors);\n"
+        "#endif\n",
+        "build number palette")))
+    results.append(("Interface/FpsCounter.cpp (build number colour)", edit(
+        os.path.join(src, "Interface", "FpsCounter.cpp"),
+        "\t_text->setColor(color);\n",
+        "\t_text->setColor(color);\n"
+        "#ifdef __AMIGA__\n"
+        "\t_amBuild->setColor(color);\n"
+        "\t_redraw = true;\n"
+        "#endif\n",
+        "build number colour")))
+    results.append(("Interface/FpsCounter.cpp (build number draw)", edit(
+        os.path.join(src, "Interface", "FpsCounter.cpp"),
+        "\tSurface::draw();\n"
+        "\t_text->blit(this);\n"
+        "}\n",
+        "\tSurface::draw();\n"
+        "#ifdef __AMIGA__\n"
+        "\tif (_amShown) _text->blit(this);\n"
+        "\t_amBuild->blit(this);\n"
+        "#else\n"
+        "\t_text->blit(this);\n"
+        "#endif\n"
+        "}\n"
+        "\n"
+        "#ifdef __AMIGA__\n"
+        "/* _visible is the FPS switch (the FPS key, StartState, the options):\n"
+        " * the surface itself is always drawn, the FPS digits only when on. */\n"
+        "void FpsCounter::amigaBlit(Surface *surface)\n"
+        "{\n"
+        "\tconst bool fps_ = _visible;\n"
+        "\tif (fps_ != _amShown) { _amShown = fps_; _redraw = true; }\n"
+        "\t_visible = true;\n"
+        "\tblit(surface);\n"
+        "\t_visible = fps_;\n"
+        "}\n"
+        "#endif\n",
+        "build number draw")))
+    results.append(("Engine/Game.cpp (build number: counter size)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        "\t_fpsCounter = new FpsCounter(15, 5, 0, 0);\n",
+        "#ifdef __AMIGA__\n"
+        "\t_fpsCounter = new FpsCounter(15, 11, 0, 0);   /* FPS, and the build number under it */\n"
+        "#else\n"
+        "\t_fpsCounter = new FpsCounter(15, 5, 0, 0);\n"
+        "#endif\n",
+        "build number counter size")))
+    results.append(("Engine/Game.cpp (build number: blit)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        "\t\t\t\tAMIGA_FRAME(\"fps blit\");\n"
+        "\t\t\t\t_fpsCounter->blit(_screen->getSurface());\n",
+        "\t\t\t\tAMIGA_FRAME(\"fps blit\");\n"
+        "\t\t\t\t_fpsCounter->amigaBlit(_screen->getSurface());\n",
+        "build number blit")))
     results.append(("UnitWalkBState.cpp (walk slice tick)", edit(
         os.path.join(src, "Battlescape", "UnitWalkBState.cpp"),
         '\t\telse if (onScreen)\n\t\t{\n\t\t\t// make sure the unit sprites are up to date\n',

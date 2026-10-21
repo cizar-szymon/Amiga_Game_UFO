@@ -192,6 +192,7 @@ static int    g_yoff;                     /* first game-area line: 0, or the
                                            * system title bar height when the
                                            * bar is left visible */
 static ULONG  g_planesize;
+static int    g_corner_down;              /* the hidden depth corner was pressed */
 static ULONG  g_epoch;
 static int    g_epoch_set = 0;   /* the clock starts ONCE, see below */
 static unsigned long g_blits;
@@ -2380,6 +2381,17 @@ int amigagfx_poll(AmigaGfxEvent *ev)
 			break;
 		}
 		case IDCMP_MOUSEBUTTONS:
+			/* Without the title bar (amigaAppBar off) there is no depth gadget:
+			 * the top right corner of the screen does its job, unseen - a click
+			 * there sends the game screen to the back, like the gadget did. The
+			 * click and its release never reach the game. */
+			if (code == SELECTDOWN && !g_win_mode && g_screen != NULL && g_yoff == 0 &&
+			    ev->x >= g_width - 16 && ev->y < 10) {
+				g_corner_down = 1;
+				ScreenToBack(g_screen);
+				break;
+			}
+			if (code == SELECTUP && g_corner_down) { g_corner_down = 0; break; }
 			switch (code) {
 			case SELECTDOWN: ev->type = AMIGAGFX_EV_MOUSEDOWN; ev->code = AMIGAGFX_BUTTON_LEFT;  break;
 			case SELECTUP:   ev->type = AMIGAGFX_EV_MOUSEUP;   ev->code = AMIGAGFX_BUTTON_LEFT;  break;

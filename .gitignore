@@ -14,3 +14,6 @@ build/__pycache__/
 # host junk
 winuae/harness/_retired_host_input/
 Thumbs.db
+
+# build number, written by the build script on the host
+native/amiga_buildid.h
