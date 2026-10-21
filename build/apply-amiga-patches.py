@@ -9278,7 +9278,10 @@ def main():
         '#ifndef AMIGA_BUILD_NUM\n'
         '#define AMIGA_BUILD_NUM 0\n'
         '#define AMIGA_BUILD_ID "unknown"\n'
+        '#define AMIGA_BUILD_VER "0 (unknown)"\n'
         '#endif\n'
+        '/* "Version <file>" in the Shell: the same build number */\n'
+        'static const char amigaVersion_[] __attribute__((used)) = "$VER: AmiXcom " AMIGA_BUILD_VER;\n'
         'extern "C" void SDLmini_Log(const char *msg);\n'
         '#endif\n',
         "build number include")))
@@ -9289,7 +9292,7 @@ def main():
         '#ifdef __AMIGA__\n'
         '\t{\n'
         '\t\tconst int b_ = amigagfx_backend();\n'
-        '\t\ttitle << L"AmiXcom\\n\\x02Version "\n'
+        '\t\ttitle << L"AmiXcom\\x02Version "   /* \\x02: a new line, in the small font */\n'
         '\t\t\t<< (b_ == AMIGAGFX_BACKEND_RTG ? L"RTG " : b_ == AMIGAGFX_BACKEND_WB ? L"WB " : L"AGA ") << AMIGA_BUILD_NUM;\n'
         '\t\tstatic bool logged_ = false;\n'
         '\t\tif (!logged_) { logged_ = true; SDLmini_Log("build: " AMIGA_BUILD_ID); }\n'
