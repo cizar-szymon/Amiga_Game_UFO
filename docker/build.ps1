@@ -22,7 +22,8 @@ $image  = 'amixcom-build'
 $bnum  = (git -C $repo rev-list --count HEAD).Trim()
 $bhash = (git -C $repo rev-parse --short HEAD).Trim()
 if (git -C $repo status --porcelain --untracked-files=no) { $bhash += '+' }
-$bid = "#define AMIGA_BUILD_NUM $bnum`n#define AMIGA_BUILD_ID `"$bnum $bhash`"`n"
+$bdate = (Get-Date).ToString('d.M.yyyy')   # the date format Version expects
+$bid = "#define AMIGA_BUILD_NUM $bnum`n#define AMIGA_BUILD_ID `"$bnum $bhash`"`n#define AMIGA_BUILD_VER `"$bnum ($bdate)`"`n"
 [IO.File]::WriteAllText("$repo\native\amiga_buildid.h", $bid)
 "build number $bnum ($bhash)"
 
