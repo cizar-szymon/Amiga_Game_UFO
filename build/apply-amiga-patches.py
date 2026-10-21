@@ -9302,6 +9302,7 @@ def main():
         '\ttitle << Language::utf8ToWstr(OPENXCOM_VERSION_SHORT) << Language::utf8ToWstr(OPENXCOM_VERSION_GIT);\n'
         '#endif\n',
         "build number title")))
+
     results.append(("UnitWalkBState.cpp (walk slice tick)", edit(
         os.path.join(src, "Battlescape", "UnitWalkBState.cpp"),
         '\t\telse if (onScreen)\n\t\t{\n\t\t\t// make sure the unit sprites are up to date\n',
@@ -10975,6 +10976,82 @@ def main():
         "\t\t\t\t\tAmigaSplash_Note(nb_);\n"
         "\t\t\t\t}\n",
         "prerender fail note")))
+
+    # Defaults = the tuned RTG setup (2026-10-21). "Restore Defaults" in the
+    #     options resets every option to its default and the mod list to the
+    #     master alone: the player lost the native 640x400 battles, the
+    #     320x200 info screens, the hidden title bar and an installed mod.
+    #     The defaults are now what this port is tuned and measured with, and
+    #     the mod list is left alone by it.
+    results.append(("Options.cpp (default: no title bar)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t_info.push_back(OptionInfo(\"amigaAppBar\", &amigaAppBar, true));\n",
+        "\t_info.push_back(OptionInfo(\"amigaAppBar\", &amigaAppBar, false)); /* the screen corner does the depth gadget's job */\n",
+        "default no title bar")))
+    results.append(("Options.cpp (default: native scale)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t_info.push_back(OptionInfo(\"amigaNativeScale\", &amigaNativeScale, false));\n",
+        "\t_info.push_back(OptionInfo(\"amigaNativeScale\", &amigaNativeScale, true)); /* 320x200 Geoscape, native battles */\n",
+        "default native scale")))
+    results.append(("Options.cpp (default: battles at 640x400)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t_info.push_back(OptionInfo(\"battlescapeScale\", &battlescapeScale, 0));\n",
+        "#ifdef __AMIGA__\n"
+        "\t_info.push_back(OptionInfo(\"battlescapeScale\", &battlescapeScale, 2)); /* with amigaNativeScale: 640x400 */\n"
+        "#else\n"
+        "\t_info.push_back(OptionInfo(\"battlescapeScale\", &battlescapeScale, 0));\n"
+        "#endif\n",
+        "default battles at 640x400")))
+    results.append(("Options.cpp (default: info screens 320x200)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "#else\n"
+        "\t_info.push_back(OptionInfo(\"maximizeInfoScreens\", &maximizeInfoScreens, false, \"STR_MAXIMIZE_INFO_SCREENS\", \"STR_GENERAL\"));\n"
+        "#endif\n",
+        "#elif defined(__AMIGA__)\n"
+        "\t/* AMIGA-PORT: the equip screen and the other info screens at 320x200 */\n"
+        "\t_info.push_back(OptionInfo(\"maximizeInfoScreens\", &maximizeInfoScreens, true, \"STR_MAXIMIZE_INFO_SCREENS\", \"STR_GENERAL\"));\n"
+        "#else\n"
+        "\t_info.push_back(OptionInfo(\"maximizeInfoScreens\", &maximizeInfoScreens, false, \"STR_MAXIMIZE_INFO_SCREENS\", \"STR_GENERAL\"));\n"
+        "#endif\n",
+        "default info screens 320x200")))
+    results.append(("Options.cpp (Restore Defaults keeps the mods)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\tbackupDisplay();\n"
+        "\n"
+        "\tmods.clear();\n",
+        "\tbackupDisplay();\n"
+        "\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* \"Restore Defaults\" in the options: the installed mods stay as they\n"
+        "\t * are (the list is empty only at startup, before options.cfg) */\n"
+        "\tif (!mods.empty()) return;\n"
+        "#endif\n"
+        "\tmods.clear();\n",
+        "restore defaults keeps mods")))
+    results.append(("main.cpp (window title: build number)", edit(
+        os.path.join(src, "main.cpp"),
+        '\ttitle << "AmiXcom 68K " << OPENXCOM_VERSION_SHORT << OPENXCOM_VERSION_GIT;\n',
+        '#ifdef __AMIGA__\n'
+        '\ttitle << "AmiXcom " << AMIGA_BUILD_NUM;   /* the screen title bar, with amigaAppBar */\n'
+        '#else\n'
+        '\ttitle << "AmiXcom 68K " << OPENXCOM_VERSION_SHORT << OPENXCOM_VERSION_GIT;\n'
+        '#endif\n',
+        "window title build number")))
+    results.append(("main.cpp (build number include)", edit(
+        os.path.join(src, "main.cpp"),
+        '#include "version.h"\n',
+        '#include "version.h"\n'
+        '#ifdef __AMIGA__\n'
+        '#if defined(__has_include)\n'
+        '#if __has_include("amiga_buildid.h")\n'
+        '#include "amiga_buildid.h"\n'
+        '#endif\n'
+        '#endif\n'
+        '#ifndef AMIGA_BUILD_NUM\n'
+        '#define AMIGA_BUILD_NUM 0\n'
+        '#endif\n'
+        '#endif\n',
+        "main build number include")))
 
     for root, _dirs, files in os.walk(src):
         for fn in files:
