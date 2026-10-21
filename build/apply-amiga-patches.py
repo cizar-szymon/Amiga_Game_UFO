@@ -9115,6 +9115,100 @@ def main():
         "\treturn bu;\n"
         "}\n",
         "hit skip recalculation")))
+
+    # 6z-react (2026-10-21): every step in misja4 spent 25-82 ms in
+    #     getSpottingUnits (reaction fire), all of it in canTargetUnit's voxel
+    #     rays for an enemy that could not see the walker anyway (visible()
+    #     false, < 1 ms). visible() is now asked first; both must hold and
+    #     neither changes what the other reads, so the result is the same
+    #     (amigaMapVerify evaluates the upstream order too: "spotverify").
+    #     The probe line ("spot: ...", amigaPerfLog, calls >= 10 ms) stays.
+    results.append(("TileEngine.cpp (reaction probe: counters)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "std::vector<std::pair<BattleUnit *, int> > TileEngine::getSpottingUnits(BattleUnit* unit)\n"
+        "{\n"
+        "\tstd::vector<std::pair<BattleUnit *, int> > spotters;\n",
+        "#ifdef __AMIGA__\n"
+        "static unsigned long amSpN_, amSpSec_, amSpTgt_, amSpVis_, amSpVisOnly_, amSpTgtUs_, amSpVisUs_;\n"
+        "#endif\n"
+        "std::vector<std::pair<BattleUnit *, int> > TileEngine::getSpottingUnits(BattleUnit* unit)\n"
+        "{\n"
+        "\tstd::vector<std::pair<BattleUnit *, int> > spotters;\n"
+        "#ifdef __AMIGA__\n"
+        "\tamSpN_ = amSpSec_ = amSpTgt_ = amSpVis_ = amSpVisOnly_ = amSpTgtUs_ = amSpVisUs_ = 0;\n"
+        "\tconst unsigned long amSp0_ = amiga_uclock_us();\n"
+        "#endif\n",
+        "reaction probe counters")))
+    results.append(("TileEngine.cpp (reaction probe: conditions)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\t\t\t\tif (((*i)->checkViewSector(unit->getPosition()) || gotHit) &&\n"
+        "\t\t\t\t\t// can actually target the unit\n"
+        "\t\t\t\t\tcanTargetUnit(&originVoxel, tile, &targetVoxel, *i) &&\n"
+        "\t\t\t\t\t// can actually see the unit\n"
+        "\t\t\t\t\tvisible(*i, tile))\n",
+        "#ifdef __AMIGA__\n"
+        "\t\t\t\tbool amOk_ = false;\n"
+        "\t\t\t\t++amSpN_;\n"
+        "\t\t\t\tif ((*i)->checkViewSector(unit->getPosition()) || gotHit)\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\t/* visible() first: canTargetUnit casts voxel rays at the target\n"
+        "\t\t\t\t\t * (25-80 ms on the Warp) and was asked first, for an enemy that\n"
+        "\t\t\t\t\t * mostly cannot see the walker at all (visible() < 1 ms, memoised).\n"
+        "\t\t\t\t\t * Both must hold and neither changes anything the other reads, so\n"
+        "\t\t\t\t\t * the order does not change the result. amigaMapVerify evaluates\n"
+        "\t\t\t\t\t * both always and logs any difference. */\n"
+        "\t\t\t\t\t++amSpSec_;\n"
+        "\t\t\t\t\tunsigned long t_ = amiga_uclock_us();\n"
+        "\t\t\t\t\tconst bool vi_ = visible(*i, tile);\n"
+        "\t\t\t\t\tamSpVisUs_ += amiga_uclock_us() - t_;\n"
+        "\t\t\t\t\tbool tg_ = false;\n"
+        "\t\t\t\t\tif (vi_ || Options::amigaMapVerify)\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tt_ = amiga_uclock_us();\n"
+        "\t\t\t\t\t\ttg_ = canTargetUnit(&originVoxel, tile, &targetVoxel, *i);\n"
+        "\t\t\t\t\t\tamSpTgtUs_ += amiga_uclock_us() - t_;\n"
+        "\t\t\t\t\t\tif (tg_) ++amSpTgt_;\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\t\tif (vi_) ++amSpVis_;\n"
+        "\t\t\t\t\tif (vi_ && !tg_) ++amSpVisOnly_;\n"
+        "\t\t\t\t\tamOk_ = vi_ && tg_;\n"
+        "\t\t\t\t\tif (Options::amigaMapVerify)\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t/* the upstream order, once more, on the same state */\n"
+        "\t\t\t\t\t\tPosition tv2_;\n"
+        "\t\t\t\t\t\tconst bool up_ = canTargetUnit(&originVoxel, tile, &tv2_, *i) && visible(*i, tile);\n"
+        "\t\t\t\t\t\tif (up_ != amOk_) SDLmini_Log(\"spotverify: MISMATCH - the order changed the result\");\n"
+        "\t\t\t\t\t\telse SDLmini_Log(\"spotverify: ok\");\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\t}\n"
+        "\t\t\t\tif (amOk_)\n"
+        "#else\n"
+        "\t\t\t\tif (((*i)->checkViewSector(unit->getPosition()) || gotHit) &&\n"
+        "\t\t\t\t\t// can actually target the unit\n"
+        "\t\t\t\t\tcanTargetUnit(&originVoxel, tile, &targetVoxel, *i) &&\n"
+        "\t\t\t\t\t// can actually see the unit\n"
+        "\t\t\t\t\tvisible(*i, tile))\n"
+        "#endif\n",
+        "reaction probe conditions")))
+    results.append(("TileEngine.cpp (reaction probe: report)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\treturn spotters;\n"
+        "}\n",
+        "#ifdef __AMIGA__\n"
+        "\t{\n"
+        "\t\tconst unsigned long tot_ = amiga_uclock_us() - amSp0_;\n"
+        "\t\tif (AmigaPerfLog && tot_ >= 10000UL)\n"
+        "\t\t{\n"
+        "\t\t\tchar b_[200];\n"
+        "\t\t\tsnprintf(b_, sizeof b_, \"spot: %lu ms - %lu in range, %lu in sector, target %lu (%lu ms), visible %lu (%lu ms), visible but no target %lu, spotters %d (visible() first)\",\n"
+        "\t\t\t\ttot_ / 1000UL, amSpN_, amSpSec_, amSpTgt_, amSpTgtUs_ / 1000UL, amSpVis_, amSpVisUs_ / 1000UL, amSpVisOnly_, (int)spotters.size());\n"
+        "\t\t\tSDLmini_Log(b_);\n"
+        "\t\t}\n"
+        "\t}\n"
+        "#endif\n"
+        "\treturn spotters;\n"
+        "}\n",
+        "reaction probe report")))
     results.append(("UnitWalkBState.cpp (walk slice tick)", edit(
         os.path.join(src, "Battlescape", "UnitWalkBState.cpp"),
         '\t\telse if (onScreen)\n\t\t{\n\t\t\t// make sure the unit sprites are up to date\n',
