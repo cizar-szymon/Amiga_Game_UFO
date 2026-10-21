@@ -3643,6 +3643,22 @@ def main():
         "\t\t}\n"
         "\t\tSDLmini_Log(\"autobattle: in the battlescape\");\n"
         "\t}\n"
+        "\telse if (!Options::amigaAutoLoad.empty())\n"
+        "\t{\n"
+        "\t\t/* amigaAutoLoad: straight into a saved game (a battle save lands in\n"
+        "\t\t * the battlescape) - for tests and for picking up where one left\n"
+        "\t\t * off, without the menu and the load list. Once per run: going back\n"
+        "\t\t * to the main menu later must not load it again. */\n"
+        "\t\tstatic bool autoLoaded_ = false;\n"
+        "\t\tif (!autoLoaded_)\n"
+        "\t\t{\n"
+        "\t\t\tautoLoaded_ = true;\n"
+        "\t\t\tstd::string f_ = Options::amigaAutoLoad;\n"
+        "\t\t\tif (f_.find('.') == std::string::npos) f_ += \".sav\";\n"
+        "\t\t\tSDLmini_Log((\"autoload: \" + f_).c_str());\n"
+        "\t\t\t_game->pushState(new LoadGameState(OPT_MENU, f_, _game->getMod()->getPalette(\"PAL_GEOSCAPE\")->getColors()));\n"
+        "\t\t}\n"
+        "\t}\n"
         "#endif\n"
         "}\n",
         "auto battle")))
@@ -3652,6 +3668,8 @@ def main():
         '#include "NewBattleState.h"\n'
         '#ifdef __AMIGA__\n'
         '#include "../Battlescape/BriefingState.h"\n'
+        '#include "LoadGameState.h"\n'
+        '#include "../Engine/Palette.h"\n'
         'extern "C" void SDLmini_Log(const char *msg);\n'
         '#endif\n',
         "auto battle includes")))
@@ -6340,6 +6358,7 @@ def main():
         "#include <cstdio>\n"
         "extern \"C\" int SDLmini_diag_armed;\n"
         "extern \"C\" unsigned long SDLmini_flips;\n"
+        "extern \"C\" int AmigaPerfLog;\n"
         "#include \"SDL_gfxPrimitives.h\"\n"
         "/* Shortest interval between two full globe redraws, milliseconds.\n"
         " * 1000 = the hard cap the port runs with; lower it once drawShadow is\n"
@@ -6551,7 +6570,7 @@ def main():
         "\t\t\t(unsigned long)(now - lastTicks_), SDLmini_flips - lastFlips_,\n"
         "\t\t\tbaseDraws_, baseDraws_ ? (unsigned long)sCache / baseDraws_ : 0UL, baseDraws_ ? (unsigned long)sOcean / baseDraws_ : 0UL, baseDraws_ ? (unsigned long)sLand / baseDraws_ : 0UL, baseDraws_ ? (unsigned long)sShadow / baseDraws_ : 0UL, baseDraws_ ? (unsigned long)sDetail / baseDraws_ : 0UL,\n"
         "\t\t\tradarDraws_, radarDraws_ ? (unsigned long)sRadar / radarDraws_ : 0UL, (unsigned long)sMark);\n"
-        "\t\tSDLmini_Log(b);\n"
+        "\t\tif (AmigaPerfLog) SDLmini_Log(b);   /* a flushed file write + a console line: only when asked for */\n"
         "\t\tlastTicks_ = now; lastFlips_ = SDLmini_flips;\n"
         "\t\tbaseDraws_ = radarDraws_ = 0; sBase = sCache = sRadar = sMark = sDetail = 0;\n"
         "\t\tsOcean = sLand = sShadow = 0;\n"
@@ -8855,7 +8874,8 @@ def main():
         "OPT bool amigaScrollOwn; /* battlescape scroll: the map surface holds the shifted picture */\n"
         "OPT int amigaMapVerify; /* 1: check every cached battlescape frame against a full compose */\n"
         "OPT bool amigaVramLayer; /* RTG: scroll the display with the card's blitter (sdlmini layer frames) */\n"
-        "OPT bool amigaGlobeLive; /* redraw the globe on every frame it is turned or zoomed, not once a second */\n",
+        "OPT bool amigaGlobeLive; /* redraw the globe on every frame it is turned or zoomed, not once a second */\n"
+        "OPT std::string amigaAutoLoad; /* a save loaded right after start (tests, or carrying on) */\n",
         "scroll switches var")))
     results.append(("Options.cpp (scroll switches info)", edit(
         os.path.join(src, "Engine", "Options.cpp"),
@@ -8864,7 +8884,8 @@ def main():
         "\t_info.push_back(OptionInfo(\"amigaScrollOwn\", &amigaScrollOwn, true));\n"
         "\t_info.push_back(OptionInfo(\"amigaMapVerify\", &amigaMapVerify, 0));\n"
         "\t_info.push_back(OptionInfo(\"amigaVramLayer\", &amigaVramLayer, true));\n"
-        "\t_info.push_back(OptionInfo(\"amigaGlobeLive\", &amigaGlobeLive, true));\n",
+        "\t_info.push_back(OptionInfo(\"amigaGlobeLive\", &amigaGlobeLive, true));\n"
+        "\t_info.push_back(OptionInfo(\"amigaAutoLoad\", &amigaAutoLoad, \"\"));\n",
         "scroll switches info")))
     results.append(("Options.cpp (amigaVramLayer mirror)", edit(
         os.path.join(src, "Engine", "Options.cpp"),

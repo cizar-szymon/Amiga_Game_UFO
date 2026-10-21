@@ -2036,6 +2036,7 @@ int amigagfx_display_scroll(int x, int y, int w, int h, int dx, int dy)
 	if (!amigagfx_display_layer_ok() || w <= 0 || h <= 0) return 0;
 	src = g_screen->RastPort.BitMap;
 	if (offbm_ready()) g_dtarget = g_offbm;
+	else if (dx == 0 && dy == 0) return 1;   /* no hidden bitmap: nothing to move */
 	BltBitMap(src, (WORD)x, (WORD)(y + g_yoff),
 	          g_dtarget != NULL ? g_dtarget : src, (WORD)(x + dx), (WORD)(y + dy + g_yoff),
 	          (WORD)w, (WORD)h, 0xC0, 0xFF, NULL);

@@ -1064,8 +1064,14 @@ static int layer_frame(void)
 			amiga_copy_push((const Uint8 *)s_q[i].src->pixels + (size_t)s_q[i].sr.y * s_q[i].src->pitch + s_q[i].sr.x,
 			                s_q[i].src->pitch, s_q[i].sr.w, s_q[i].sr.h);
 
-	if (dx != 0 || dy != 0)
-		amigagfx_display_scroll(dx > 0 ? 0 : -dx, dy > 0 ? 0 : -dy, w - (dx > 0 ? dx : -dx), h - (dy > 0 ? dy : -dy), dx, dy);
+	/* Always, also without a move: the call is what points the writes below
+	 * at the off-screen bitmap. Skipped for dx = dy = 0, the repairs and the
+	 * HUD went straight onto the shown picture - the map painted over the
+	 * panel and an open window, then those drawn again, all visible: a window
+	 * (Save/Load, the shot menu) and the battle panel "fighting" while the
+	 * pointer moved, and a blink of the panel between two scroll steps
+	 * (reported 2026-10-21). With no move this is one whole-frame blit. */
+	amigagfx_display_scroll(dx > 0 ? 0 : -dx, dy > 0 ? 0 : -dy, w - (dx > 0 ? dx : -dx), h - (dy > 0 ? dy : -dy), dx, dy);
 
 	lock = amigagfx_display_lock(&base, &bpr);
 	if (lock == NULL) {
@@ -1701,6 +1707,7 @@ SDL_Surface *SDL_SetVideoMode(int width, int height, int bpp, Uint32 flags)
 }
 
 extern void amiga_heapguard_check(const char *where);   /* no-op unless AMIGA_HEAPGUARD=1 */
+extern int AmigaPerfLog;   /* Options::amigaPerfLog, mirrored by the game */
 
 int SDL_Flip(SDL_Surface *screen)
 {
@@ -1770,7 +1777,10 @@ int SDL_Flip(SDL_Surface *screen)
 		s_perf_fskip = 0;   /* per window; verify mismatches stay cumulative */
 		s_perf_fpart = s_perf_fpartpx = 0;
 		s_perf_fdirect = 0;
-		SDLmini_Log(b_);
+		/* only with amigaPerfLog: every log line is a flushed write to the
+		 * SD card plus a console line on the Workbench, and the game waits
+		 * for both - a hitch every two seconds otherwise */
+		if (AmigaPerfLog) SDLmini_Log(b_);
 		s_perf_last_ms = now_;
 		s_perf_c2p_ms = 0;
 		s_perf_c2p_px = s_perf_skips = 0;
