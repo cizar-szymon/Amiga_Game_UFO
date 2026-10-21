@@ -3384,12 +3384,14 @@ def main():
         'extern "C" unsigned long AmigaMapMs, AmigaMapN, AmigaTileN, AmigaShadeN;\n'
         'extern "C" unsigned long AmigaAnimMs, AmigaAnimN;\n'
         'extern "C" unsigned long AmigaTileRevealN, AmigaTileShadeN;\n'
+        'extern "C" { extern short AmigaTileChgX[], AmigaTileChgY[]; extern int AmigaTileChgN; }   /* Tile.cpp: columns a step changed */\n'
         'extern "C" unsigned long AmigaShadeThruN;\n'
         'extern int AmigaClipX0, AmigaClipY0, AmigaClipX1, AmigaClipY1;\n'
         'const Uint8 *AmigaDirtyGrid = 0; int AmigaDirtyGridW = 0, AmigaDirtyGridH = 0;   /* dirty tile grid, set during a partial compose */\n'
         'static int AmigaDirtyFullColumn = 0;   /* tight repair: force the full column while dirtying the OLD cursor tiles */\n'
         'static unsigned long AmCp_full = 0, AmCp_fullMs = 0, AmCp_part = 0, AmCp_partMs = 0, AmCp_hit = 0, AmCp_partPx = 0, AmCp_partTiles = 0, AmCp_partBlits = 0, AmCp_partRects = 0, AmCp_fullBlits = 0;\n'
         'static unsigned long AmCp_whySig = 0, AmCp_whyMiss = 0, AmCp_whyUnits = 0, AmCp_whyCur = 0, AmCp_whyProj = 0, AmCp_whyExpl = 0, AmCp_whyScroll = 0;\n'
+        'static unsigned long AmCp_whyLight = 0, AmCp_lightTiles = 0, AmCp_diff = 0, AmCp_diffPx = 0;\n'
         'static unsigned long AmCp_lastSig = 0;\n'
         'static unsigned long AmSg_[16], AmSgN_ = 0;   /* sig probe: per-component last values */\n'
         '#endif\n',
@@ -3973,6 +3975,17 @@ def main():
         '#include "Tile.h"\n'
         '#ifdef __AMIGA__\n'
         'extern "C" { unsigned long AmigaTileRevealN = 0, AmigaTileShadeN = 0; }\n'
+        '/* The tile columns whose picture a step changed (discovered, or a new\n'
+        ' * shade from the walker\'s own light): Map::draw repairs just these. A\n'
+        ' * list that overflows is a whole-picture change (the counter above). */\n'
+        '#define AMIGA_TILECHG_MAX 256\n'
+        'extern "C" { short AmigaTileChgX[AMIGA_TILECHG_MAX], AmigaTileChgY[AMIGA_TILECHG_MAX]; int AmigaTileChgN = 0; }\n'
+        'extern "C" void AmigaTileChanged(int x, int y)\n'
+        '{\n'
+        '\tif (AmigaTileChgN > 0 && AmigaTileChgX[AmigaTileChgN - 1] == x && AmigaTileChgY[AmigaTileChgN - 1] == y) return;\n'
+        '\tif (AmigaTileChgN < AMIGA_TILECHG_MAX) { AmigaTileChgX[AmigaTileChgN] = (short)x; AmigaTileChgY[AmigaTileChgN] = (short)y; ++AmigaTileChgN; }\n'
+        '\telse ++AmigaTileRevealN;\n'
+        '}\n'
         '#endif\n',
         "step-dirty counters")))
     results.append(("Tile.cpp (step-dirty reveal)", edit(
@@ -3983,7 +3996,7 @@ def main():
         "\tif (_discovered[part] != flag)\n"
         "\t{\n"
         "#ifdef __AMIGA__\n"
-        "\t\t++AmigaTileRevealN;\n"
+        "\t\tAmigaTileChanged(_pos.x, _pos.y);\n"
         "#endif\n"
         "\t\t_discovered[part] = flag;\n",
         "step-dirty reveal")))
@@ -4037,6 +4050,55 @@ def main():
         "}\n",
         "step-dirty reset")))
 
+    # 6z-pre2 (2026-10-21). The walker's own light (personal lighting) moves
+    #     with every step and changes the shade of tiles around it. Counted in
+    #     AmigaTileShadeN, that was a whole-picture recompose per step: ~100 ms
+    #     at 640x400, the hitch on every step of a walk in a dark mission. Here
+    #     the shades before and after the recalculation are compared, and only
+    #     the columns that really changed go on the repair list (a darkened
+    #     tile included - addLight() never sees those).
+    results.append(("TileEngine.cpp (unit lighting: changed tiles)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "void TileEngine::calculateUnitLighting()\n"
+        "{\n",
+        "#ifdef __AMIGA__\n"
+        "extern \"C\" unsigned long AmigaTileShadeN;\n"
+        "extern \"C\" void AmigaTileChanged(int x, int y);\n"
+        "#endif\n"
+        "void TileEngine::calculateUnitLighting()\n"
+        "{\n",
+        "unit lighting externs")))
+    results.append(("TileEngine.cpp (unit lighting: changed tiles end)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\t\t\taddLight((*i)->getPosition(), fireLightPower, layer);\n"
+        "\t\t}\n"
+        "\t}\n"
+        "}\n",
+        "\t\t\taddLight((*i)->getPosition(), fireLightPower, layer);\n"
+        "\t\t}\n"
+        "\t}\n"
+        "#ifdef __AMIGA__\n"
+        "\tAmigaTileShadeN = amShadeN_;   /* not a whole-picture change: the list below */\n"
+        "\t{\n"
+        "\t\tconst int mx_ = _save->getMapSizeX(), mxy_ = mx_ * _save->getMapSizeY();\n"
+        "\t\tstatic std::vector<Uint8> col_;   /* one entry per column, whatever the level */\n"
+        "\t\tif ((int)col_.size() != mxy_) col_.resize(mxy_);\n"
+        "\t\tfor (int k_ = 0; k_ < mxy_; ++k_) col_[k_] = 0;\n"
+        "\t\tfor (int i_ = 0; i_ < amN_; ++i_)\n"
+        "\t\t{\n"
+        "\t\t\tTile *t_ = _save->getTiles()[i_];\n"
+        "\t\t\tif (t_->getShade() == amOld_[i_]) continue;\n"
+        "\t\t\tconst Position &p_ = t_->getPosition();\n"
+        "\t\t\tconst int c_ = p_.y * mx_ + p_.x;\n"
+        "\t\t\tif (c_ < 0 || c_ >= mxy_ || col_[c_]) continue;\n"
+        "\t\t\tcol_[c_] = 1;\n"
+        "\t\t\tAmigaTileChanged(p_.x, p_.y);\n"
+        "\t\t}\n"
+        "\t}\n"
+        "#endif\n"
+        "}\n",
+        "unit lighting changed tiles")))
+
     # 6z. Battlescape frame cache, dirty-rect design (2026-08-18 evening).
     #     Composing the map is the whole battle frame; standing still, only
     #     8 distinct pictures ever exist (tiles animate in 8 frames). Keep the
@@ -4080,6 +4142,9 @@ def main():
         "\tbool _fcScrollStrip;   /* scroll propagate: copy the repaired strip to the other phases */\n"
         "\tint _fcOwn;            /* scroll: the map surface IS phase _fcOwn's picture, its _fcPix is stale; -1 none */\n"
         "\tUint32 _fcOwnGen;      /* the surface's content generation when draw() left it */\n"
+        "\tUint32 _fcShownGen;    /* the same, kept for every frame: the surface still holds that picture */\n"
+        "\tvoid amigaDiffIn(const Uint8 *src, int spitch);\n"
+        "\tvoid amigaMarkPhaseDeps(int except);\n"
         "\t/* scroll window: while scrolling, the surface's pixels are a window into a\n"
         "\t * bigger buffer and a scroll step moves the window, not the picture */\n"
         "\tUint8 *_fcWinMem, *_fcWinBuf;\n"
@@ -4114,7 +4179,7 @@ def main():
         "\t_fcGridW = _fcGridH = 0;\n"
         "\t_fcCamX = _fcCamY = -100000;\n"
         "\t_fcScrollStrip = false; _fcStripX0 = _fcStripY0 = 0; _fcStripX1 = _fcStripY1 = 0;\n"
-        "\t_fcOwn = -1; _fcOwnGen = 0;\n"
+        "\t_fcOwn = -1; _fcOwnGen = 0; _fcShownGen = 0;\n"
         "\t_fcWinMem = _fcWinBuf = 0; _fcWinBW = _fcWinBH = _fcWinX = _fcWinY = 0; _fcWinOrigPix = 0; _fcWinOrigPitch = 0;\n"
         "\t_fcProjLx0 = _fcProjLy0 = 0; _fcProjLx1 = _fcProjLy1 = -1;\n"
         "\t_fcProjIdx = -1;\n"
@@ -4138,11 +4203,13 @@ def main():
         "extern \"C\" void AmigaCacheReport(char *b, unsigned long n)\n"
         "{\n"
         "\t/* TEMP cache probe: per 100 frames, how Map::draw resolved and what it cost */\n"
-        "\tsnprintf(b, n, \"cache: hit %lu | partial %lu/%lu rects (%lu ms, %lu px, %lu tiles, %lu blits) | full %lu (%lu ms, %lu blits) | why: sig %lu miss %lu units %lu cur %lu proj %lu expl %lu scroll %lu\",\n"
+        "\tsnprintf(b, n, \"cache: hit %lu | partial %lu/%lu rects (%lu ms, %lu px, %lu tiles, %lu blits) | full %lu (%lu ms, %lu blits) | why: sig %lu miss %lu units %lu cur %lu proj %lu expl %lu scroll %lu light %lu/%lu | diff %lu (%lu px)\",\n"
         "\t\tAmCp_hit, AmCp_part, AmCp_partRects, AmCp_partMs, AmCp_partPx, AmCp_partTiles, AmCp_partBlits, AmCp_full, AmCp_fullMs, AmCp_fullBlits,\n"
-        "\t\tAmCp_whySig, AmCp_whyMiss, AmCp_whyUnits, AmCp_whyCur, AmCp_whyProj, AmCp_whyExpl, AmCp_whyScroll);\n"
+        "\t\tAmCp_whySig, AmCp_whyMiss, AmCp_whyUnits, AmCp_whyCur, AmCp_whyProj, AmCp_whyExpl, AmCp_whyScroll,\n"
+        "\t\tAmCp_whyLight, AmCp_lightTiles, AmCp_diff, AmCp_diffPx);\n"
         "\tAmCp_hit = AmCp_part = AmCp_partMs = AmCp_partPx = AmCp_partTiles = AmCp_full = AmCp_fullMs = AmCp_partBlits = AmCp_partRects = AmCp_fullBlits = 0;\n"
         "\tAmCp_whySig = AmCp_whyMiss = AmCp_whyUnits = AmCp_whyCur = AmCp_whyProj = AmCp_whyExpl = AmCp_whyScroll = 0;\n"
+        "\tAmCp_whyLight = AmCp_lightTiles = AmCp_diff = AmCp_diffPx = 0;\n"
         "}\n"
         "#endif\n"
         "\n"
@@ -4204,10 +4271,11 @@ def main():
         "\t\tif (diff_)\n"
         "\t\t{\n"
         "\t\t\tstatic unsigned long sgLog_ = 0;\n"
-        "\t\t\tif (AmigaPerfLog && (sgLog_++ % 50) == 0)\n"
+        "\t\t\tif (AmigaPerfLog && sgLog_++ < 300)\n"
         "\t\t\t{\n"
-        "\t\t\t\tchar sb_[160];\n"
-        "\t\t\t\tsnprintf(sb_, sizeof sb_, \"sig: changed mask 0x%lx (bit0 cam,1 level,2 wp,3 preview,4 flags,5 selUnit,6 nUnits,7 reveal/shade,8 nExpl) cam %lu->%lu\", mask_, AmSg_[0], c_[0]);\n"
+        "\t\t\t\tchar sb_[200];\n"
+        "\t\t\t\tsnprintf(sb_, sizeof sb_, \"sig: changed mask 0x%lx (bit0 cam,1 level,2 wp,3 preview,4 flags,5 selUnit,6 nUnits,7 reveal/shade,8 nExpl) reveal %lu shade %lu list %d\",\n"
+        "\t\t\t\t\tmask_, AmigaTileRevealN, AmigaTileShadeN, AmigaTileChgN);\n"
         "\t\t\t\tSDLmini_Log(sb_);\n"
         "\t\t\t}\n"
         "\t\t}\n"
@@ -4634,6 +4702,97 @@ def main():
         "\tmemcpy(s_->pixels, ref_, sz_);\n"
         "}\n"
         "\n"
+        "/* The surface still holds the picture of the last frame; the picture of\n"
+        " * this frame is src (a cache slot). Copy in only the rows' spans that\n"
+        " * differ, and report them to the display layer as damage, so the screen\n"
+        " * gets just those instead of the whole map. Between two animation phases,\n"
+        " * or a phase and the same one after a step, that is a few strips: the\n"
+        " * animated tiles and what the walker changed (2026-10-21). */\n"
+        "void Map::amigaDiffIn(const Uint8 *src, int spitch)\n"
+        "{\n"
+        "\tSDL_Surface *s_ = getSurface();\n"
+        "\tconst int w_ = getWidth(), h_ = getHeight();\n"
+        "\tconst int nl_ = w_ >> 2;\n"
+        "\tconst int BAND_ = 16;\n"
+        "\tint rx0_ = 0, ry0_ = -1, rx1_ = 0, ry1_ = 0;   /* the open damage rectangle */\n"
+        "\tunsigned long px_ = 0;\n"
+        "\tfor (int by_ = 0; by_ < h_; by_ += BAND_)\n"
+        "\t{\n"
+        "\t\tconst int be_ = by_ + BAND_ < h_ ? by_ + BAND_ : h_;\n"
+        "\t\tint bx0_ = w_, bx1_ = 0;\n"
+        "\t\tfor (int y_ = by_; y_ < be_; ++y_)\n"
+        "\t\t{\n"
+        "\t\t\tconst Uint32 *a_ = (const Uint32 *)(src + (size_t)y_ * spitch);\n"
+        "\t\t\tUint32 *b_ = (Uint32 *)((Uint8 *)s_->pixels + (size_t)y_ * s_->pitch);\n"
+        "\t\t\tint l_ = 0;\n"
+        "\t\t\twhile (l_ < nl_ && a_[l_] == b_[l_]) ++l_;\n"
+        "\t\t\tif (l_ == nl_) continue;\n"
+        "\t\t\tint r_ = nl_ - 1;\n"
+        "\t\t\twhile (a_[r_] == b_[r_]) --r_;\n"
+        "\t\t\tmemcpy(b_ + l_, a_ + l_, (size_t)(r_ - l_ + 1) * 4);\n"
+        "\t\t\tif (l_ * 4 < bx0_) bx0_ = l_ * 4;\n"
+        "\t\t\tif (r_ * 4 + 4 > bx1_) bx1_ = r_ * 4 + 4;\n"
+        "\t\t}\n"
+        "\t\tif (bx1_ > bx0_)\n"
+        "\t\t{\n"
+        "\t\t\tif (ry0_ >= 0 && ry1_ == by_) { if (bx0_ < rx0_) rx0_ = bx0_; if (bx1_ > rx1_) rx1_ = bx1_; ry1_ = be_; continue; }\n"
+        "\t\t\tif (ry0_ >= 0) { SDLmini_LayerDamage(s_, rx0_, ry0_, rx1_ - rx0_, ry1_ - ry0_); px_ += (unsigned long)(rx1_ - rx0_) * (ry1_ - ry0_); }\n"
+        "\t\t\trx0_ = bx0_; rx1_ = bx1_; ry0_ = by_; ry1_ = be_;\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\tif (ry0_ >= 0) { SDLmini_LayerDamage(s_, rx0_, ry0_, rx1_ - rx0_, ry1_ - ry0_); px_ += (unsigned long)(rx1_ - rx0_) * (ry1_ - ry0_); }\n"
+        "\t++AmCp_diff; AmCp_diffPx += px_;\n"
+        "}\n"
+        "\n"
+        "/* After the current phase's repaired boxes were copied into the other\n"
+        " * phases (step propagate): what is drawn differently per phase besides\n"
+        " * the animated tiles - the selected unit's arrow (it bobs), the cursor\n"
+        " * (the yellow box blinks, the crosshair turns) and burning units - must\n"
+        " * be redrawn in those phases. The same set amigaSeedOtherPhases marks. */\n"
+        "void Map::amigaMarkPhaseDeps(int except)\n"
+        "{\n"
+        "\tconst int vl_ = _camera->getViewLevel();\n"
+        "\tBattleUnit *su_ = _save->getSelectedUnit();\n"
+        "\tconst bool arrow_ = su_ && (_save->getSide() == FACTION_PLAYER || _save->getDebugMode()) && su_->getPosition().z <= vl_ && getCursorType() != CT_NONE;\n"
+        "\tint ax0_ = 0, ay0_ = 0;\n"
+        "\tif (arrow_)\n"
+        "\t{\n"
+        "\t\tPosition sp_, off_;\n"
+        "\t\t_camera->convertMapToScreen(su_->getPosition(), &sp_);\n"
+        "\t\tsp_ += _camera->getMapOffset();\n"
+        "\t\tcalculateWalkingOffset(su_, &off_);\n"
+        "\t\tif (su_->getArmor()->getSize() > 1) off_.y += 4;\n"
+        "\t\toff_.y += 24 - su_->getHeight();\n"
+        "\t\tif (su_->isKneeled()) off_.y -= 2;\n"
+        "\t\tax0_ = sp_.x + off_.x + (_spriteWidth / 2) - (_arrow->getWidth() / 2); ay0_ = sp_.y + off_.y - _arrow->getHeight();\n"
+        "\t}\n"
+        "\tconst int cs_ = _cursorSize > 0 ? _cursorSize : 1;\n"
+        "\tint cx0_ = 1 << 14, cy0_ = 1 << 14, cx1_ = -(1 << 14), cy1_ = -(1 << 14);\n"
+        "\tif (_cursorType != CT_NONE) amigaCursorRect_(_camera, _selectorX, _selectorY, cs_, vl_, _spriteWidth, _spriteHeight, cx0_, cy0_, cx1_, cy1_);\n"
+        "\tfor (int i_ = 0; i_ < 8; ++i_)\n"
+        "\t{\n"
+        "\t\tif (i_ == except || !_fcValid[i_]) continue;\n"
+        "\t\tif (arrow_)\n"
+        "\t\t{\n"
+        "\t\t\tPosition up_ = su_->getPosition(); int sz_ = su_->getArmor()->getSize();\n"
+        "\t\t\tfor (int a_ = 0; a_ < sz_; ++a_) for (int b_ = 0; b_ < sz_; ++b_)\n"
+        "\t\t\t\tfor (int dy_ = -1; dy_ <= 1; ++dy_) for (int dx_ = -1; dx_ <= 1; ++dx_) amigaDirtyTileOne(i_, up_.x + a_ + dx_, up_.y + b_ + dy_);\n"
+        "\t\t\tamigaGrowBox(i_, ax0_, ay0_, ax0_ + _arrow->getWidth(), ay0_ + _arrow->getHeight() + 2);   /* bob 0..2 */\n"
+        "\t\t}\n"
+        "\t\tif (_cursorType != CT_NONE)\n"
+        "\t\t{\n"
+        "\t\t\tamigaGrowBox(i_, cx0_, cy0_, cx1_, cy1_);\n"
+        "\t\t\tfor (int a_ = 0; a_ < cs_; ++a_) for (int b_ = 0; b_ < cs_; ++b_) amigaMarkTileNoBox(i_, _selectorX - a_, _selectorY - b_);\n"
+        "\t\t}\n"
+        "\t\tfor (std::vector<BattleUnit*>::iterator u_ = _save->getUnits()->begin(); u_ != _save->getUnits()->end(); ++u_)\n"
+        "\t\t\tif ((*u_)->getFire() > 0 && !(*u_)->isOut())\n"
+        "\t\t\t{\n"
+        "\t\t\t\tPosition fp_ = (*u_)->getPosition();\n"
+        "\t\t\t\tfor (int dy_ = -1; dy_ <= 1; ++dy_) for (int dx_ = -1; dx_ <= 1; ++dx_) amigaDirtyTileOne(i_, fp_.x + dx_, fp_.y + dy_);\n"
+        "\t\t\t}\n"
+        "\t}\n"
+        "}\n"
+        "\n"
         "/* After drawTerrain: copy the composed area (whole picture or the clip\n"
         " * rect) into the current phase's cache and mark that phase clean. */\n"
         "void Map::amigaCacheStore()\n"
@@ -4685,6 +4844,7 @@ def main():
         "\t\tconst int w_ = getWidth(), h_ = getHeight();\n"
         "\t\tconst int ph_ = _animFrame & 7;\n"
         "\t\tconst unsigned long sig_ = amigaFullSig();\n"
+        "\t\tbool amLightProp_ = false;   /* step propagate: see the light list below */\n"
         "\t\tstd::vector<BattleUnit*> *us_ = _save->getUnits();\n"
         "\t\tconst size_t un_ = us_->size();\n"
         "\t\t/* grid sized to the map, allocated once per battle size */\n"
@@ -4897,6 +5057,27 @@ def main():
         "\t\t\t\t\t_fcCamX = mo_.x; _fcCamY = mo_.y;\n"
         "\t\t\t\t}\n"
         "\t\t\t}\n"
+        "\t\t\t/* a step's discovered tiles and its walker's light: just those columns\n"
+        "\t\t\t * (Tile.cpp, TileEngine::calculateUnitLighting); an overflowing list\n"
+        "\t\t\t * changed the signature above instead */\n"
+        "\t\t\tif (AmigaTileChgN > 0)\n"
+        "\t\t\t{\n"
+        "\t\t\t\t++AmCp_whyLight; AmCp_lightTiles += (unsigned long)AmigaTileChgN;\n"
+        "\t\t\t\t/* Step propagate (2026-10-21): marked in the current phase only,\n"
+        "\t\t\t\t * repaired once, then copied into the other 7 (below, as the scroll\n"
+        "\t\t\t\t * does) with only their phase-dependent parts left to redraw. Marked\n"
+        "\t\t\t\t * in all 8, the ~80 columns a walker's light changes were composed\n"
+        "\t\t\t\t * 8 times per step, ~20 ms of every walking frame at 640x400. */\n"
+        "\t\t\t\tif (!_fcScrollStrip && _fcValid[ph_] && _fcPix[ph_] != 0)\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tamLightProp_ = true;\n"
+        "\t\t\t\t\tfor (int k_ = 0; k_ < AmigaTileChgN; ++k_)\n"
+        "\t\t\t\t\t\tfor (int dy_ = -1; dy_ <= 1; ++dy_) for (int dx_ = -1; dx_ <= 1; ++dx_)\n"
+        "\t\t\t\t\t\t\tamigaDirtyTileOne(ph_, AmigaTileChgX[k_] + dx_, AmigaTileChgY[k_] + dy_);\n"
+        "\t\t\t\t}\n"
+        "\t\t\t\telse\n"
+        "\t\t\t\t\tfor (int k_ = 0; k_ < AmigaTileChgN; ++k_) amigaDirtyTile(AmigaTileChgX[k_], AmigaTileChgY[k_]);\n"
+        "\t\t\t}\n"
         "\t\t\t/* incremental producers mark TILES */\n"
         "\t\t\tfor (size_t i_ = 0; i_ < un_; ++i_)\n"
         "\t\t\t{\n"
@@ -4980,6 +5161,7 @@ def main():
         "\t\t\t\t}\n"
         "\t\t\t}\n"
         "\t\t}\n"
+        "\t\tAmigaTileChgN = 0;   /* used above, or the picture is recomposed whole */\n"
         "\t\tif (_fcOwn >= 0 && !_fcValid[_fcOwn]) _fcOwn = -1;   /* dropped above */\n"
         "\t\t/* current phase usable? */\n"
         "\t\tif (_fcValid[ph_] && _fcPix[ph_] != 0)\n"
@@ -4987,12 +5169,25 @@ def main():
         "\t\t\tSDL_Surface *d_ = getSurface();\n"
         "\t\t\tif (_fcOwn != ph_)\n"
         "\t\t\t{\n"
+        "\t\t\t\t/* The surface still shows the last frame (nobody wrote it since):\n"
+        "\t\t\t\t * bring in only what differs, and the display layer sends only that.\n"
+        "\t\t\t\t * Was: the whole picture copied in and reported as new - every\n"
+        "\t\t\t\t * animation phase change, and every frame of a walk, went to the\n"
+        "\t\t\t\t * screen the slow way (~37 ms at 640x400 on the Warp). */\n"
+        "\t\t\t\tif (Options::amigaVramLayer && _fcShownGen != 0 && d_->amgen == _fcShownGen && (w_ & 3) == 0)\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tSDLmini_Written(d_);\n"
+        "\t\t\t\t\tamigaDiffIn(_fcPix[ph_], w_);\n"
+        "\t\t\t\t}\n"
+        "\t\t\t\telse\n"
+        "\t\t\t\t{\n"
         "\t\t\t\tamigaWinHome();        /* overwritten whole: back to the aligned middle */\n"
         "\t\t\t\tSDLmini_Written(d_);   /* the copy and the repairs below write d_ directly */\n"
         "\t\t\t\tSDLmini_LayerFull(d_);\n"
         "\t\t\t\tconst Uint8 *sp_ = _fcPix[ph_];\n"
         "\t\t\t\tUint8 *dp_ = (Uint8 *)d_->pixels;\n"
         "\t\t\t\tamiga_copy_rows(dp_, d_->pitch, sp_, w_, w_, h_);   /* MOVE16 rows on 040/060 */\n"
+        "\t\t\t\t}\n"
         "\t\t\t}\n"
         "\t\t\tif (_fcDirtyN[ph_] == 0)\n"
         "\t\t\t{\n"
@@ -5000,6 +5195,7 @@ def main():
         "\t\t\t\t_fcScrollStrip = false;   /* nothing to propagate this frame */\n"
         "\t\t\t\tif (Options::amigaMapVerify) amigaVerifyFrame();\n"
         "\t\t\t\tif (_fcOwn >= 0) _fcOwnGen = d_->amgen;\n"
+        "\t\t\t\t_fcShownGen = d_->amgen;\n"
         "\t\t\t\tSDLmini_LayerDone(d_);\n"
         "\t\t\t\t_redraw = false;\n"
         "\t\t\t\treturn;\n"
@@ -5034,7 +5230,7 @@ def main():
         "\t\t\t\t\tAmigaDirtyGrid = 0;\n"
         "\t\t\t\t\tbool othV_ = false;   /* nothing to propagate into when no other phase is valid */\n"
         "\t\t\t\t\tfor (int i_ = 0; i_ < 8; ++i_) if (i_ != ph_ && _fcValid[i_]) othV_ = true;\n"
-        "\t\t\t\t\tif (_fcScrollStrip && othV_)\n"
+        "\t\t\t\t\tif ((_fcScrollStrip || amLightProp_) && othV_)\n"
         "\t\t\t\t\t{\n"
         "\t\t\t\t\t\t/* scroll propagate: the repaired area of THIS phase is, bar the animated\n"
         "\t\t\t\t\t\t * tiles (left dirty there), the same in every other phase - copy it. */\n"
@@ -5070,6 +5266,7 @@ def main():
         "\t\t\t\t\t}\n"
         "\t\t\t\t}\n"
         "\t\t\t}\n"
+        "\t\t\tif (amLightProp_) amigaMarkPhaseDeps(ph_);   /* the copies carry this phase's arrow, cursor, fire */\n"
         "\t\t\t_fcScrollStrip = false;\n"
         "\t\t\tif (_fcGrid[ph_]) memset(_fcGrid[ph_], 0, (size_t)_fcGridW * _fcGridH);\n"
         "\t\t\t_fcDirtyN[ph_] = 0; _fcBoxN[ph_] = 0;\n"
@@ -5077,6 +5274,7 @@ def main():
         "\t\t\t_fcClipX0 = _fcClipY0 = 0; _fcClipX1 = _fcClipY1 = 1 << 14;\n"
         "\t\t\tif (Options::amigaMapVerify) amigaVerifyFrame();\n"
         "\t\t\tif (_fcOwn >= 0) _fcOwnGen = d_->amgen;\n"
+        "\t\t\t_fcShownGen = d_->amgen;\n"
         "\t\t\tSDLmini_LayerDone(d_);\n"
         "\t\t\t_redraw = false;\n"
         "\t\t\treturn;\n"
@@ -5099,6 +5297,7 @@ def main():
         "#ifdef __AMIGA__\n"
         "\tamigaComposeVisible();   /* compose split */\n"
         "\tSDLmini_LayerFull(getSurface());\n"
+        "\t_fcShownGen = getSurface()->amgen;\n"
         "\tSDLmini_LayerDone(getSurface());\n"
         "}\n"
         "\n"
@@ -7248,7 +7447,7 @@ def main():
     results.append(("Engine/Game.cpp (us probe report)", edit(
         os.path.join(src, "Engine", "Game.cpp"),
         "\t\t\t\t\t\t\tif (AmigaMapMs > 0 || AmigaCacheHitN() > 0) { char cb_[224]; AmigaCacheReport(cb_, sizeof cb_); SDLmini_Log(cb_); }\n",
-        "\t\t\t\t\t\t\tif (Options::amigaPerfLog && (AmigaMapMs > 0 || AmigaCacheHitN() > 0)) { char cb_[224]; AmigaCacheReport(cb_, sizeof cb_); SDLmini_Log(cb_);\n"
+        "\t\t\t\t\t\t\tif (Options::amigaPerfLog && (AmigaMapMs > 0 || AmigaCacheHitN() > 0)) { char cb_[320]; AmigaCacheReport(cb_, sizeof cb_); SDLmini_Log(cb_);\n"
         "\t\t\t\t\t\t\t\tchar ub_[400]; AmigaUsReport(ub_, sizeof ub_); SDLmini_Log(ub_);\n"
         "\t\t\t\t\t\t\t\tsnprintf(ub_, sizeof ub_, \"us2: 100 fr: think %lu | blit %lu = terr %lu + scrblit big %lu/%lu small %lu/%lu classify %lu fill %lu + rest | flip %lu (us)\",\n"
         "\t\t\t\t\t\t\t\t\tAmUs_think, AmUs_blit, AmigaTerrUs, SDLmini_ProfBlitBigUs, SDLmini_ProfBlitBigN, SDLmini_ProfBlitSmallUs, SDLmini_ProfBlitSmallN, SDLmini_ProfClassifyUs, SDLmini_ProfFillUs, AmUs_flip);\n"
@@ -8149,6 +8348,24 @@ def main():
         "\t}\n"
         "\n",
         "light memo")))
+    # 6z-pre2, the snapshot half: the shades before the recalculation (after
+    # the memo - a skipped recalculation changes nothing)
+    results.append(("Battlescape/TileEngine.cpp (unit lighting snapshot)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\t\towner_ = _save; srcPos_.swap(np_); srcPow_.swap(nw_);\n"
+        "\t}\n"
+        "\n",
+        "\t\towner_ = _save; srcPos_.swap(np_); srcPow_.swap(nw_);\n"
+        "\t}\n"
+        "\n"
+        "\t/* 6z-pre2: the shades before, compared at the end */\n"
+        "\tconst int amN_ = _save->getMapSizeXYZ();\n"
+        "\tstatic std::vector<Uint8> amOld_;\n"
+        "\tif ((int)amOld_.size() != amN_) amOld_.resize(amN_);\n"
+        "\tfor (int i_ = 0; i_ < amN_; ++i_) amOld_[i_] = (Uint8)_save->getTiles()[i_]->getShade();\n"
+        "\tconst unsigned long amShadeN_ = AmigaTileShadeN;\n"
+        "\n",
+        "unit lighting snapshot")))
 
     # 6aj. 1G step 3 (2026-08-19): a civilian's own FOV is dead weight. After
     #      every step the mover runs a full cone sweep (~65 ms); for a NEUTRAL
@@ -8669,6 +8886,37 @@ def main():
         'void TileEngine::calculateFOV(const Position &position)\n{\n\tfor (std::vector<BattleUnit*>::iterator i = _save->getUnits()->begin(); i != _save->getUnits()->end(); ++i)\n\t{\n\t\tif (distanceSq(position, (*i)->getPosition()) <= MAX_VIEW_DISTANCE_SQR)\n\t\t{\n\t\t\t/* AMIGA-PORT: after a step only the pairs involving the unit at\n\t\t\t * `position` (the mover) can have changed. The mover gets a full\n\t\t\t * FOV; everyone else just re-checks the mover: cheap cone test,\n\t\t\t * one visibility ray at most. If no unit stands at `position`\n\t\t\t * (terrain changed: door, explosion) fall back to full FOVs. */\n\t\t\tBattleUnit *mover_ = _save->getTile(position) ? _save->getTile(position)->getUnit() : 0;\n\t\t\tif (mover_ == 0)\n\t\t\t{\n\t\t\t\tcalculateFOV(*i);\n\t\t\t}\n\t\t\telse if (*i == mover_)\n\t\t\t{\n\t\t\t\tcalculateFOV(*i, true);\n\t\t\t}\n\t\t\telse if (!(*i)->isOut())\n\t\t\t{\n\t\t\t\tBattleUnit *w_ = *i;\n\t\t\t\tstd::vector<BattleUnit*> *vu_ = w_->getVisibleUnits();\n\t\t\t\tvu_->erase(std::remove(vu_->begin(), vu_->end(), mover_), vu_->end());\n\t\t\t\tint dir_;\n\t\t\t\tif (Options::strafe && (w_->getTurretType() > -1))\n\t\t\t\t\tdir_ = w_->getTurretDirection();\n\t\t\t\telse\n\t\t\t\t\tdir_ = w_->getDirection();\n\t\t\t\t{\n\t\t\t\t\tstatic const int sX_[8] = { +1, +1, +1, +1, -1, -1, -1, -1 };\n\t\t\t\t\tstatic const int sY_[8] = { -1, -1, -1, +1, +1, +1, -1, -1 };\n\t\t\t\t\tconst bool sw_ = (dir_ == 0 || dir_ == 4);\n\t\t\t\t\tconst Position d_ = mover_->getPosition() - w_->getPosition();\n\t\t\t\t\tconst int xi_ = sw_ ? sY_[dir_]*d_.y : sX_[dir_]*d_.x;\n\t\t\t\t\tconst int yi_ = sw_ ? sX_[dir_]*d_.x : sY_[dir_]*d_.y;\n\t\t\t\t\tif (xi_ < 0 || xi_ > MAX_VIEW_DISTANCE) continue;\n\t\t\t\t\tif (dir_%2) { if (yi_ < 0 || yi_ > MAX_VIEW_DISTANCE) continue; }\n\t\t\t\t\telse        { if (yi_ < -xi_ || yi_ > xi_) continue; }\n\t\t\t\t\tif (xi_*xi_ + yi_*yi_ > MAX_VIEW_DISTANCE_SQR) continue;\n\t\t\t\t}\n\t\t\t\t/* AMIGA-PORT 1G: pointless pair - see the patch script */\n\t\t\t\tif (w_->getFaction() == FACTION_NEUTRAL\n\t\t\t\t\t|| (w_->getFaction() == FACTION_HOSTILE && mover_->getFaction() == FACTION_HOSTILE)) continue;\n\t\t\t\tif (visible(w_, mover_->getTile()))\n\t\t\t\t{\n\t\t\t\t\tif (w_->getFaction() == FACTION_PLAYER)\n\t\t\t\t\t\tmover_->setVisible(true);\n\t\t\t\t\tif ((mover_->getFaction() == FACTION_HOSTILE && w_->getFaction() == FACTION_PLAYER)\n\t\t\t\t\t\t|| (mover_->getFaction() != FACTION_HOSTILE && w_->getFaction() == FACTION_HOSTILE))\n\t\t\t\t\t{\n\t\t\t\t\t\tw_->addToVisibleUnits(mover_);\n\t\t\t\t\t\tif (w_->getFaction() == FACTION_HOSTILE && mover_->getFaction() != FACTION_HOSTILE)\n\t\t\t\t\t\t\tmover_->setTurnsSinceSpotted(0);\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n}\n',
         'void TileEngine::calculateFOV(const Position &position)\n{\n\tBattleUnit *mover_ = _save->getTile(position) ? _save->getTile(position)->getUnit() : 0;\n\tfor (std::vector<BattleUnit*>::iterator i = _save->getUnits()->begin(); i != _save->getUnits()->end(); ++i)\n\t{\n\t\tif (distanceSq(position, (*i)->getPosition()) <= MAX_VIEW_DISTANCE_SQR)\n\t\t{\n\t\t\tamigaWalkFovOne(*i, mover_, position);\n\t\t}\n\t}\n}\n\n/* AMIGA-PORT 6amB: one unit\'s worth of the after-step FOV work - shared by\n * the boundary loop above and the animation-time slices below. */\nvoid TileEngine::amigaWalkFovOne(BattleUnit *w0_, BattleUnit *mover_, const Position &position)\n{\n\t/* AMIGA-PORT: after a step only the pairs involving the unit at\n\t * `position` (the mover) can have changed. The mover gets a full\n\t * FOV; everyone else just re-checks the mover: cheap cone test,\n\t * one visibility ray at most. If no unit stands at `position`\n\t * (terrain changed: door, explosion) fall back to full FOVs. */\n\tif (mover_ == 0)\n\t{\n\t\tcalculateFOV(w0_);\n\t}\n\telse if (w0_ == mover_)\n\t{\n\t\tcalculateFOV(w0_, true);\n\t}\n\telse if (!w0_->isOut())\n\t{\n\t\tBattleUnit *w_ = w0_;\n\t\tstd::vector<BattleUnit*> *vu_ = w_->getVisibleUnits();\n\t\tvu_->erase(std::remove(vu_->begin(), vu_->end(), mover_), vu_->end());\n\t\tint dir_;\n\t\tif (Options::strafe && (w_->getTurretType() > -1))\n\t\t\tdir_ = w_->getTurretDirection();\n\t\telse\n\t\t\tdir_ = w_->getDirection();\n\t\t{\n\t\t\tstatic const int sX_[8] = { +1, +1, +1, +1, -1, -1, -1, -1 };\n\t\t\tstatic const int sY_[8] = { -1, -1, -1, +1, +1, +1, -1, -1 };\n\t\t\tconst bool sw_ = (dir_ == 0 || dir_ == 4);\n\t\t\tconst Position d_ = mover_->getPosition() - w_->getPosition();\n\t\t\tconst int xi_ = sw_ ? sY_[dir_]*d_.y : sX_[dir_]*d_.x;\n\t\t\tconst int yi_ = sw_ ? sX_[dir_]*d_.x : sY_[dir_]*d_.y;\n\t\t\tif (xi_ < 0 || xi_ > MAX_VIEW_DISTANCE) return;\n\t\t\tif (dir_%2) { if (yi_ < 0 || yi_ > MAX_VIEW_DISTANCE) return; }\n\t\t\telse        { if (yi_ < -xi_ || yi_ > xi_) return; }\n\t\t\tif (xi_*xi_ + yi_*yi_ > MAX_VIEW_DISTANCE_SQR) return;\n\t\t}\n\t\t/* AMIGA-PORT 1G: pointless pair - see the patch script */\n\t\tif (w_->getFaction() == FACTION_NEUTRAL\n\t\t\t|| (w_->getFaction() == FACTION_HOSTILE && mover_->getFaction() == FACTION_HOSTILE)) return;\n\t\tif (visible(w_, mover_->getTile()))\n\t\t{\n\t\t\tif (w_->getFaction() == FACTION_PLAYER)\n\t\t\t\tmover_->setVisible(true);\n\t\t\tif ((mover_->getFaction() == FACTION_HOSTILE && w_->getFaction() == FACTION_PLAYER)\n\t\t\t\t|| (mover_->getFaction() != FACTION_HOSTILE && w_->getFaction() == FACTION_HOSTILE))\n\t\t\t{\n\t\t\t\tw_->addToVisibleUnits(mover_);\n\t\t\t\tif (w_->getFaction() == FACTION_HOSTILE && mover_->getFaction() != FACTION_HOSTILE)\n\t\t\t\t\tmover_->setTurnsSinceSpotted(0);\n\t\t\t}\n\t\t}\n\t}\n}\n\n/* AMIGA-PORT 6amB: the step-boundary freeze spread over the walk animation\n * (the user\'s design). Once the walker\'s logical position flips to the\n * destination tile (mid-animation) nothing can interrupt the rest of the\n * animation, so the boundary results are already determined: lighting on\n * the first slice tick, then the per-unit FOV loop in EXACTLY the boundary\n * order, `budget` units per tick. The boundary finishes leftovers (usually\n * none). amVisGen_ guards a map change mid-flight -> full recompute. */\nstatic Position amWfPos_ = Position(-1, -1, -1);\nstatic Position amWfDonePos_ = Position(-1, -1, -1);\nstatic unsigned long amWfGen_ = 0;\nstatic unsigned long amWfDoneGen_ = 0;\nstatic size_t amWfIdx_ = 0;\nstatic int amWfLight_ = 0;\nstatic int amWfConeX_ = 0;\nstatic int amWfConeDone_ = 0;\nstatic int amWfLightPh_ = 0;      /* 0 collect, 1 floods, 2 commit, 3 done */\nstatic int amWfSrcI_ = 0, amWfSrcN_ = 0;\nstatic Position amWfSrcP_[256];\nstatic int amWfSrcW_[256];\nstatic int amWfSpot_ = 0;\n\nbool TileEngine::amigaWalkFovSlice(const Position &pos, BattleUnit *walker, int budget)\n{\n\t/* AMIGA-PORT 6amF: while slicing, the walker\'s _pos VALUE is swapped to\n\t * the destination (occupancy untouched, restored before returning) so\n\t * eye voxel, distances, memo keys and lighting all compute as-if\n\t * arrived - from the FIRST animation frame. */\n\tif (amWfPos_ != pos)\n\t{\n\t\tamWfPos_ = pos;\n\t\tamWfIdx_ = 0;\n\t\tamWfLight_ = 0;\n\t\tamWfLightPh_ = 0;\n\t\tamWfConeX_ = 0;\n\t\tamWfConeDone_ = 0;\n\t\tamWfGen_ = amVisGen_;\n\t\tif (AmigaPerfLog) SDLmini_Log("wf: arm");\n\t}\n\tif (amWfGen_ != amVisGen_)\n\t\treturn false;\n\tconst unsigned long t0_ = amiga_uclock_us();\n\tif (!amWfLight_ || !amWfConeDone_)\n\t{\n\t\tconst Position realPos_ = walker->getPosition();\n\t\tconst bool swap_ = !(realPos_.x == pos.x && realPos_.y == pos.y && realPos_.z == pos.z);\n\t\tif (swap_) walker->setPosition(pos, false);\n\t\t/* 6amG: lighting built in a side buffer, one source per tick, then a\n\t\t * cheap atomic commit - the screen never sees a half-updated layer */\n\t\tif (amWfLightPh_ == 0)\n\t\t{\n\t\t\tconst int n_ = _save->getMapSizeXYZ();\n\t\t\tif (amLbufN_ != n_)\n\t\t\t{\n\t\t\t\tdelete[] amLbuf_;\n\t\t\t\tamLbuf_ = new Uint8[n_];\n\t\t\t\tamLbufN_ = n_;\n\t\t\t}\n\t\t\tmemset(amLbuf_, 0, (size_t)n_);\n\t\t\tamWfSrcN_ = 0;\n\t\t\tfor (std::vector<BattleUnit*>::iterator i = _save->getUnits()->begin(); i != _save->getUnits()->end(); ++i)\n\t\t\t{\n\t\t\t\tif (amWfSrcN_ > 254) break;\n\t\t\t\t/* same criteria and 15/15 powers as calculateUnitLighting */\n\t\t\t\tif (_personalLighting && (*i)->getFaction() == FACTION_PLAYER && !(*i)->isOut())\n\t\t\t\t{ amWfSrcP_[amWfSrcN_] = (*i)->getPosition(); amWfSrcW_[amWfSrcN_++] = 15; }\n\t\t\t\tif ((*i)->getFire())\n\t\t\t\t{ amWfSrcP_[amWfSrcN_] = (*i)->getPosition(); amWfSrcW_[amWfSrcN_++] = 15; }\n\t\t\t}\n\t\t\tamWfSrcI_ = 0;\n\t\t\tamWfLightPh_ = 1;\n\t\t}\n\t\twhile (amWfLightPh_ == 1 && amiga_uclock_us() - t0_ <= 60000UL)\n\t\t{\n\t\t\tif (amWfSrcI_ >= amWfSrcN_) { amWfLightPh_ = 2; break; }\n\t\t\tamLbufOn_ = 1;\n\t\t\taddLight(amWfSrcP_[amWfSrcI_], amWfSrcW_[amWfSrcI_], 2);\n\t\t\tamLbufOn_ = 0;\n\t\t\t++amWfSrcI_;\n\t\t}\n\t\tif (amWfLightPh_ == 2 && amiga_uclock_us() - t0_ <= 60000UL)\n\t\t{\n\t\t\tconst int n_ = _save->getMapSizeXYZ();\n\t\t\tfor (int i_ = 0; i_ < n_; ++i_)\n\t\t\t{\n\t\t\t\tTile *t_ = _save->getTiles()[i_];\n\t\t\t\tt_->resetLight(2);\n\t\t\t\tt_->addLight(amLbuf_[i_], 2);\n\t\t\t}\n\t\t\tamWfLightPh_ = 3;\n\t\t\tamWfLight_ = 1;\n\t\t}\n\t\twhile (amWfLightPh_ == 3 && !amWfConeDone_ && amiga_uclock_us() - t0_ <= 60000UL)\n\t\t{\n\t\t\tamFovXLo_ = amWfConeX_;\n\t\t\tamFovXHi_ = amWfConeX_ + 1;\n\t\t\tif (amFovXHi_ > MAX_VIEW_DISTANCE) amFovXHi_ = MAX_VIEW_DISTANCE;\n\t\t\tcalculateFOV(walker, true);\n\t\t\tamWfConeX_ = amFovXHi_ + 1;\n\t\t\tamFovXLo_ = amFovXHi_ = -1;\n\t\t\tif (amWfConeX_ > MAX_VIEW_DISTANCE)\n\t\t\t\tamWfConeDone_ = 1;\n\t\t}\n\t\tif (swap_) walker->setPosition(realPos_, false);\n\t\tif (amWfLightPh_ != 3 || !amWfConeDone_ || amiga_uclock_us() - t0_ > 60000UL)\n\t\t\treturn true;\n\t}\n\t/* watchers need the walker really occupying the tile */\n\tBattleUnit *mover_ = _save->getTile(pos) ? _save->getTile(pos)->getUnit() : 0;\n\tif (mover_ != walker)\n\t\treturn true;\n\tstd::vector<BattleUnit*> *u_ = _save->getUnits();\n\twhile (amWfIdx_ < u_->size())\n\t{\n\t\tif (amiga_uclock_us() - t0_ > 60000UL)\n\t\t\tbreak;\n\t\tBattleUnit *b_ = (*u_)[amWfIdx_];\n\t\tif (b_ == walker || distanceSq(pos, b_->getPosition()) > MAX_VIEW_DISTANCE_SQR)\n\t\t{\n\t\t\t++amWfIdx_;\n\t\t\tcontinue;\n\t\t}\n\t\tamigaWalkFovOne(b_, mover_, pos);\n\t\t++amWfIdx_;\n\t}\n\treturn amWfIdx_ < u_->size();\n}\n\nbool TileEngine::amigaWalkFovFinish(const Position &pos, BattleUnit *walker)\n{\n\tif (amWfPos_ != pos || amWfGen_ != amVisGen_)\n\t{\n\t\tif (AmigaPerfLog) SDLmini_Log("wf: finish REJECT");\n\t\tamWfPos_ = Position(-1, -1, -1);\n\t\treturn false;\n\t}\n\tBattleUnit *mover_ = _save->getTile(pos) ? _save->getTile(pos)->getUnit() : 0;\n\tif (mover_ != walker)\n\t{\n\t\tamWfPos_ = Position(-1, -1, -1);\n\t\treturn false;\n\t}\n\tif (amWfLightPh_ != 3)\n\t{\n\t\tcalculateUnitLighting();\n\t\tamWfLightPh_ = 3;\n\t\tamWfLight_ = 1;\n\t}\n\twhile (!amWfConeDone_)\n\t{\n\t\tamFovXLo_ = amWfConeX_;\n\t\tamFovXHi_ = MAX_VIEW_DISTANCE;\n\t\tcalculateFOV(walker, true);\n\t\tamFovXLo_ = amFovXHi_ = -1;\n\t\tamWfConeDone_ = 1;\n\t}\n\tstd::vector<BattleUnit*> *u_ = _save->getUnits();\n\twhile (amWfIdx_ < u_->size())\n\t{\n\t\tBattleUnit *b_ = (*u_)[amWfIdx_];\n\t\tif (b_ == walker || distanceSq(pos, b_->getPosition()) > MAX_VIEW_DISTANCE_SQR)\n\t\t{\n\t\t\t++amWfIdx_;\n\t\t\tcontinue;\n\t\t}\n\t\tamigaWalkFovOne(b_, mover_, pos);\n\t\t++amWfIdx_;\n\t}\n\tamWfPos_ = Position(-1, -1, -1);\n\tamWfDonePos_ = pos;\n\tamWfDoneGen_ = amVisGen_;\n\treturn true;\n}\n\nbool TileEngine::amigaWalkFovIsDone(const Position &pos) const\n{\n\treturn amWfDonePos_ == pos && amWfDoneGen_ == amVisGen_;\n}\n\nvoid TileEngine::amigaWalkFovMarkDone(const Position &pos)\n{\n\tamWfDonePos_ = pos;\n\tamWfDoneGen_ = amVisGen_;\n}\n',
         "walk slice engine")))
+    # 6z-pre2 for the walk: a walking soldier's light is committed here, not
+    # in calculateUnitLighting - same treatment, the columns whose shade the
+    # commit changed go on the repair list instead of a whole recompose.
+    results.append(("TileEngine.cpp (walk light commit: changed tiles)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\t\t\tfor (int i_ = 0; i_ < n_; ++i_)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tTile *t_ = _save->getTiles()[i_];\n"
+        "\t\t\t\tt_->resetLight(2);\n"
+        "\t\t\t\tt_->addLight(amLbuf_[i_], 2);\n"
+        "\t\t\t}\n",
+        "\t\t\tconst unsigned long amShadeN_ = AmigaTileShadeN;\n"
+        "\t\t\tconst int mx_ = _save->getMapSizeX(), mxy_ = mx_ * _save->getMapSizeY();\n"
+        "\t\t\tstatic std::vector<Uint8> col_;   /* one entry per column, whatever the level */\n"
+        "\t\t\tif ((int)col_.size() != mxy_) col_.resize(mxy_);\n"
+        "\t\t\tfor (int k_ = 0; k_ < mxy_; ++k_) col_[k_] = 0;\n"
+        "\t\t\tfor (int i_ = 0; i_ < n_; ++i_)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tTile *t_ = _save->getTiles()[i_];\n"
+        "\t\t\t\tconst int old_ = t_->getShade();\n"
+        "\t\t\t\tt_->resetLight(2);\n"
+        "\t\t\t\tt_->addLight(amLbuf_[i_], 2);\n"
+        "\t\t\t\tif (t_->getShade() != old_)\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tconst Position &p_ = t_->getPosition();\n"
+        "\t\t\t\t\tconst int c_ = p_.y * mx_ + p_.x;\n"
+        "\t\t\t\t\tif (c_ >= 0 && c_ < mxy_ && !col_[c_]) { col_[c_] = 1; AmigaTileChanged(p_.x, p_.y); }\n"
+        "\t\t\t\t}\n"
+        "\t\t\t}\n"
+        "\t\t\tAmigaTileShadeN = amShadeN_;   /* not a whole-picture change: the list */\n",
+        "walk light commit changed tiles")))
     results.append(("UnitWalkBState.cpp (walk slice tick)", edit(
         os.path.join(src, "Battlescape", "UnitWalkBState.cpp"),
         '\t\telse if (onScreen)\n\t\t{\n\t\t\t// make sure the unit sprites are up to date\n',

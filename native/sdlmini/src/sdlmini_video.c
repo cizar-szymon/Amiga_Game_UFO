@@ -946,7 +946,7 @@ static Uint32 back_sum(void)
 int SDLmini_VramLayer = 1;
 static SDL_Surface *s_layer;
 static int s_layer_dx, s_layer_dy, s_layer_full = 1;
-#define LAYER_RMAX 8
+#define LAYER_RMAX 16   /* a phase change reports a strip per changed band (Map::amigaDiffIn) */
 static SDL_Rect s_layer_dmg[LAYER_RMAX];
 static int s_layer_ndmg;
 static Uint32 s_layer_gen;
