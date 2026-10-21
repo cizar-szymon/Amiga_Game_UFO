@@ -16,6 +16,16 @@ New-Item -ItemType Directory -Force $deploy | Out-Null
 $deploy = (Resolve-Path $deploy).Path
 $image  = 'amixcom-build'
 
+# The build number the game shows under the FPS counter: the commit count of
+# the tree, plus the short hash (with "+" when it has uncommitted changes) in
+# sdlmini.log. Written into native/ (ignored by git) for the compiler.
+$bnum  = (git -C $repo rev-list --count HEAD).Trim()
+$bhash = (git -C $repo rev-parse --short HEAD).Trim()
+if (git -C $repo status --porcelain --untracked-files=no) { $bhash += '+' }
+$bid = "#define AMIGA_BUILD_NUM $bnum`n#define AMIGA_BUILD_ID `"$bnum $bhash`"`n"
+[IO.File]::WriteAllText("$repo\native\amiga_buildid.h", $bid)
+"build number $bnum ($bhash)"
+
 if ($Rebuild -or -not (docker images -q $image)) {
     docker build -t $image $here
     if ($LASTEXITCODE) { throw "docker build failed" }
