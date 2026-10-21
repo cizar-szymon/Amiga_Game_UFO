@@ -6269,18 +6269,8 @@ def main():
         GLOBE_XULINE_NEW,
         "fixed-point XuLine")))
 
-    # 6o. Port credit, small font, bottom-left of the title screen.
-    results.append(("MainMenuState.cpp (port credit)", edit(
-        os.path.join(src, "Menu", "MainMenuState.cpp"),
-        "\tadd(_txtTitle, \"text\", \"mainMenu\");\n",
-        "\tadd(_txtTitle, \"text\", \"mainMenu\");\n"
-        "\t{\n"
-        "\t\tText *txtPort_ = new Text(200, 9, 2, 191); /* AMIGA-PORT credit */\n"
-        "\t\tadd(txtPort_, \"text\", \"mainMenu\");\n"
-        "\t\ttxtPort_->setSmall();\n"
-        "\t\ttxtPort_->setText(Language::utf8ToWstr(\"PORT MADE BY GRZEGORZ KORYCKI\"));\n"
-        "\t}\n",
-        "port credit")))
+    # 6o. (removed 2026-10-21) The port credit on the title screen: the
+    #     player asked for the title screen without it.
 
     # 6p. Loading-splash progress (native/amiga_splash.c). The splash shows
     #     itself when the screen opens (sdlmini); the game only feeds the bar:
@@ -9267,29 +9257,19 @@ def main():
         "}\n",
         "reaction probe report")))
 
-    # Build number (2026-10-21): the commit count of the tree the binary was
-    #     built from, in small digits under the FPS counter and always shown,
-    #     so a screenshot or a report says which build it was. The number
-    #     comes from native/amiga_buildid.h, written by the build script on
-    #     the host (not in the repository); without it the number is 0.
-    results.append(("Interface/FpsCounter.h (build number)", edit(
-        os.path.join(src, "Interface", "FpsCounter.h"),
-        "\tint _frames;\n",
-        "\tint _frames;\n"
-        "#ifdef __AMIGA__\n"
-        "\tNumberText *_amBuild;   /* the build number, drawn under the FPS */\n"
-        "\tbool _amShown;          /* the FPS itself is drawn (Options::fpsCounter) */\n"
-        "public:\n"
-        "\t/// Draws the build number always and the FPS when it is switched on.\n"
-        "\tvoid amigaBlit(Surface *surface);\n"
-        "private:\n"
-        "#endif\n",
-        "build number members")))
-    results.append(("Interface/FpsCounter.cpp (build number include)", edit(
-        os.path.join(src, "Interface", "FpsCounter.cpp"),
-        '#include "NumberText.h"\n',
-        '#include "NumberText.h"\n'
+    # Build number in the main menu (2026-10-21): under the title, small,
+    #     "Version RTG <n>" - n is the commit count of the tree the binary was
+    #     built from, so two players can tell which build is the newer one;
+    #     RTG/AGA/WB is the display that actually opened. It comes from
+    #     native/amiga_buildid.h, written by the build script on the host (not
+    #     in the repository); without it the number is 0. sdlmini.log gets
+    #     "build: <n> <hash>[+]" once.
+    results.append(("MainMenuState.cpp (build number include)", edit(
+        os.path.join(src, "Menu", "MainMenuState.cpp"),
+        '#include "../version.h"\n',
+        '#include "../version.h"\n'
         '#ifdef __AMIGA__\n'
+        '#include "amiga_gfx.h"\n'
         '#if defined(__has_include)\n'
         '#if __has_include("amiga_buildid.h")\n'
         '#include "amiga_buildid.h"\n'
@@ -9302,89 +9282,23 @@ def main():
         'extern "C" void SDLmini_Log(const char *msg);\n'
         '#endif\n',
         "build number include")))
-    results.append(("Interface/FpsCounter.cpp (build number create)", edit(
-        os.path.join(src, "Interface", "FpsCounter.cpp"),
-        "\t_text = new NumberText(width, height, x, y);\n"
-        "}\n",
-        "\t_text = new NumberText(width, height, x, y);\n"
-        "#ifdef __AMIGA__\n"
-        "\t_amBuild = new NumberText(width, 5, x, y + 6);\n"
-        "\t_amBuild->setValue(AMIGA_BUILD_NUM);\n"
-        "\t_amShown = _visible;\n"
-        "\tSDLmini_Log(\"build: \" AMIGA_BUILD_ID);\n"
-        "#endif\n"
-        "}\n",
-        "build number create")))
-    results.append(("Interface/FpsCounter.cpp (build number delete)", edit(
-        os.path.join(src, "Interface", "FpsCounter.cpp"),
-        "\tdelete _text;\n"
-        "\tdelete _timer;\n",
-        "\tdelete _text;\n"
-        "\tdelete _timer;\n"
-        "#ifdef __AMIGA__\n"
-        "\tdelete _amBuild;\n"
-        "#endif\n",
-        "build number delete")))
-    results.append(("Interface/FpsCounter.cpp (build number palette)", edit(
-        os.path.join(src, "Interface", "FpsCounter.cpp"),
-        "\t_text->setPalette(colors, firstcolor, ncolors);\n",
-        "\t_text->setPalette(colors, firstcolor, ncolors);\n"
-        "#ifdef __AMIGA__\n"
-        "\t_amBuild->setPalette(colors, firstcolor, ncolors);\n"
-        "#endif\n",
-        "build number palette")))
-    results.append(("Interface/FpsCounter.cpp (build number colour)", edit(
-        os.path.join(src, "Interface", "FpsCounter.cpp"),
-        "\t_text->setColor(color);\n",
-        "\t_text->setColor(color);\n"
-        "#ifdef __AMIGA__\n"
-        "\t_amBuild->setColor(color);\n"
-        "\t_redraw = true;\n"
-        "#endif\n",
-        "build number colour")))
-    results.append(("Interface/FpsCounter.cpp (build number draw)", edit(
-        os.path.join(src, "Interface", "FpsCounter.cpp"),
-        "\tSurface::draw();\n"
-        "\t_text->blit(this);\n"
-        "}\n",
-        "\tSurface::draw();\n"
-        "#ifdef __AMIGA__\n"
-        "\tif (_amShown) _text->blit(this);\n"
-        "\t_amBuild->blit(this);\n"
-        "#else\n"
-        "\t_text->blit(this);\n"
-        "#endif\n"
-        "}\n"
-        "\n"
-        "#ifdef __AMIGA__\n"
-        "/* _visible is the FPS switch (the FPS key, StartState, the options):\n"
-        " * the surface itself is always drawn, the FPS digits only when on. */\n"
-        "void FpsCounter::amigaBlit(Surface *surface)\n"
-        "{\n"
-        "\tconst bool fps_ = _visible;\n"
-        "\tif (fps_ != _amShown) { _amShown = fps_; _redraw = true; }\n"
-        "\t_visible = true;\n"
-        "\tblit(surface);\n"
-        "\t_visible = fps_;\n"
-        "}\n"
-        "#endif\n",
-        "build number draw")))
-    results.append(("Engine/Game.cpp (build number: counter size)", edit(
-        os.path.join(src, "Engine", "Game.cpp"),
-        "\t_fpsCounter = new FpsCounter(15, 5, 0, 0);\n",
-        "#ifdef __AMIGA__\n"
-        "\t_fpsCounter = new FpsCounter(15, 11, 0, 0);   /* FPS, and the build number under it */\n"
-        "#else\n"
-        "\t_fpsCounter = new FpsCounter(15, 5, 0, 0);\n"
-        "#endif\n",
-        "build number counter size")))
-    results.append(("Engine/Game.cpp (build number: blit)", edit(
-        os.path.join(src, "Engine", "Game.cpp"),
-        "\t\t\t\tAMIGA_FRAME(\"fps blit\");\n"
-        "\t\t\t\t_fpsCounter->blit(_screen->getSurface());\n",
-        "\t\t\t\tAMIGA_FRAME(\"fps blit\");\n"
-        "\t\t\t\t_fpsCounter->amigaBlit(_screen->getSurface());\n",
-        "build number blit")))
+    results.append(("MainMenuState.cpp (build number title)", edit(
+        os.path.join(src, "Menu", "MainMenuState.cpp"),
+        '\ttitle << L"AmiXcom 68K" << L"\\x02";\n'
+        '\ttitle << Language::utf8ToWstr(OPENXCOM_VERSION_SHORT) << Language::utf8ToWstr(OPENXCOM_VERSION_GIT);\n',
+        '#ifdef __AMIGA__\n'
+        '\t{\n'
+        '\t\tconst int b_ = amigagfx_backend();\n'
+        '\t\ttitle << L"AmiXcom\\n\\x02Version "\n'
+        '\t\t\t<< (b_ == AMIGAGFX_BACKEND_RTG ? L"RTG " : b_ == AMIGAGFX_BACKEND_WB ? L"WB " : L"AGA ") << AMIGA_BUILD_NUM;\n'
+        '\t\tstatic bool logged_ = false;\n'
+        '\t\tif (!logged_) { logged_ = true; SDLmini_Log("build: " AMIGA_BUILD_ID); }\n'
+        '\t}\n'
+        '#else\n'
+        '\ttitle << L"AmiXcom 68K" << L"\\x02";\n'
+        '\ttitle << Language::utf8ToWstr(OPENXCOM_VERSION_SHORT) << Language::utf8ToWstr(OPENXCOM_VERSION_GIT);\n'
+        '#endif\n',
+        "build number title")))
     results.append(("UnitWalkBState.cpp (walk slice tick)", edit(
         os.path.join(src, "Battlescape", "UnitWalkBState.cpp"),
         '\t\telse if (onScreen)\n\t\t{\n\t\t\t// make sure the unit sprites are up to date\n',
