@@ -11227,6 +11227,140 @@ def main():
             "#endif\n" % which_,
             "typed size leaves mixed")))
 
+    # 6cam. The camera follows a bullet from inside drawTerrain(): centred on
+    #       it at launch and dragged along every frame (battleSmoothCamera),
+    #       or flipped a screen at a time when it leaves the view (default).
+    #       With the dirty-rect cache drawTerrain() runs AFTER draw() has
+    #       matched the camera offset against the cached pictures, inside the
+    #       repair of a few boxes - so the boxes were drawn at the new offset
+    #       over a picture at the old one (misja4 with battleSmoothCamera, a
+    #       long shot: mapverify 80519 px wrong at the launch, Warp4070,
+    #       2026-10-22). Move the camera first, in draw(), so the cache sees
+    #       the move like any other scroll; drawTerrain() no longer moves it.
+    results.append(("Map.h (camera follows the bullet first)", edit(
+        os.path.join(src, "Battlescape", "Map.h"),
+        "\tvoid amigaVerifyFrame();   /* amigaMapVerify: the cached frame against a full compose */\n",
+        "\tvoid amigaVerifyFrame();   /* amigaMapVerify: the cached frame against a full compose */\n"
+        "\tvoid amigaFollowProjectile();   /* drawTerrain()'s camera follow, run before the cache */\n",
+        "camera follow decl")))
+    results.append(("Map.cpp (no camera follow inside drawTerrain)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t// if the projectile is outside the viewport - center it back on it\n"
+        "\t\t_camera->convertVoxelToScreen(_projectile->getPosition(), &bulletPositionScreen);\n"
+        "\n"
+        "\t\tif (_projectileInFOV)\n",
+        "\t\t// if the projectile is outside the viewport - center it back on it\n"
+        "\t\t_camera->convertVoxelToScreen(_projectile->getPosition(), &bulletPositionScreen);\n"
+        "\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t/* AMIGA-PORT: done by amigaFollowProjectile() before the cache */\n"
+        "\t\tif (false)\n"
+        "#else\n"
+        "\t\tif (_projectileInFOV)\n"
+        "#endif\n",
+        "camera follow moved out of drawTerrain")))
+    results.append(("Map.cpp (camera follow before the cache)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "void Map::draw()\n"
+        "{\n",
+        "#ifdef __AMIGA__\n"
+        "/* drawTerrain()'s camera follow, unchanged, for draw() to run before the\n"
+        " * dirty-rect cache looks at the camera - see the patch script (6cam). */\n"
+        "void Map::amigaFollowProjectile()\n"
+        "{\n"
+        "\tif (!_projectile || !_explosions.empty()) return;\n"
+        "\tTile *t = _save->getTile(Position(_projectile->getPosition(0).x/16, _projectile->getPosition(0).y/16, _projectile->getPosition(0).z/24));\n"
+        "\tif (!(_save->getDebugMode() || _save->getSide() == FACTION_PLAYER || (t && t->getVisible()))) return;\n"
+        "\tint bulletLowX=16000, bulletLowY=16000, bulletHighZ=0;\n"
+        "\tint part = _projectile->getItem() ? 0 : BULLET_SPRITES-1;\n"
+        "\tfor (int i = 0; i <= part; ++i)\n"
+        "\t{\n"
+        "\t\tif (_projectile->getPosition(1-i).x < bulletLowX) bulletLowX = _projectile->getPosition(1-i).x;\n"
+        "\t\tif (_projectile->getPosition(1-i).y < bulletLowY) bulletLowY = _projectile->getPosition(1-i).y;\n"
+        "\t\tif (_projectile->getPosition(1-i).z > bulletHighZ) bulletHighZ = _projectile->getPosition(1-i).z;\n"
+        "\t}\n"
+        "\tbulletLowX = bulletLowX / 16;\n"
+        "\tbulletLowY = bulletLowY / 16;\n"
+        "\tbulletHighZ = bulletHighZ / 24;\n"
+        "\tSurface *surface = this;\n"
+        "\tPosition bulletPositionScreen;\n"
+        "\t_camera->convertVoxelToScreen(_projectile->getPosition(), &bulletPositionScreen);\n"
+        "\tPosition newCam = _camera->getMapOffset();\n"
+        "\tif (newCam.z != bulletHighZ) //switch level\n"
+        "\t{\n"
+        "\t\tnewCam.z = bulletHighZ;\n"
+        "\t\t_camera->setMapOffset(newCam);\n"
+        "\t\t_camera->convertVoxelToScreen(_projectile->getPosition(), &bulletPositionScreen);\n"
+        "\t}\n"
+        "\tif (_smoothCamera)\n"
+        "\t{\n"
+        "\t\tif (_launch)\n"
+        "\t\t{\n"
+        "\t\t\t_launch = false;\n"
+        "\t\t\tif ((bulletPositionScreen.x < 1 || bulletPositionScreen.x > surface->getWidth() - 1 ||\n"
+        "\t\t\t\tbulletPositionScreen.y < 1 || bulletPositionScreen.y > _visibleMapHeight - 1))\n"
+        "\t\t\t{\n"
+        "\t\t\t\t_camera->centerOnPosition(Position(bulletLowX, bulletLowY, bulletHighZ), false);\n"
+        "\t\t\t\t_camera->convertVoxelToScreen(_projectile->getPosition(), &bulletPositionScreen);\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "\t\tif (!_smoothingEngaged)\n"
+        "\t\t{\n"
+        "\t\t\tif (bulletPositionScreen.x < 1 || bulletPositionScreen.x > surface->getWidth() - 1 ||\n"
+        "\t\t\t\tbulletPositionScreen.y < 1 || bulletPositionScreen.y > _visibleMapHeight - 1)\n"
+        "\t\t\t{\n"
+        "\t\t\t\t_smoothingEngaged = true;\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "\t\telse\n"
+        "\t\t{\n"
+        "\t\t\t_camera->jumpXY(surface->getWidth() / 2 - bulletPositionScreen.x, _visibleMapHeight / 2 - bulletPositionScreen.y);\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\telse\n"
+        "\t{\n"
+        "\t\tbool enough;\n"
+        "\t\tdo\n"
+        "\t\t{\n"
+        "\t\t\tenough = true;\n"
+        "\t\t\tif (bulletPositionScreen.x < 0)\n"
+        "\t\t\t{\n"
+        "\t\t\t\t_camera->jumpXY(+surface->getWidth(), 0);\n"
+        "\t\t\t\tenough = false;\n"
+        "\t\t\t}\n"
+        "\t\t\telse if (bulletPositionScreen.x > surface->getWidth())\n"
+        "\t\t\t{\n"
+        "\t\t\t\t_camera->jumpXY(-surface->getWidth(), 0);\n"
+        "\t\t\t\tenough = false;\n"
+        "\t\t\t}\n"
+        "\t\t\telse if (bulletPositionScreen.y < 0)\n"
+        "\t\t\t{\n"
+        "\t\t\t\t_camera->jumpXY(0, +_visibleMapHeight);\n"
+        "\t\t\t\tenough = false;\n"
+        "\t\t\t}\n"
+        "\t\t\telse if (bulletPositionScreen.y > _visibleMapHeight)\n"
+        "\t\t\t{\n"
+        "\t\t\t\t_camera->jumpXY(0, -_visibleMapHeight);\n"
+        "\t\t\t\tenough = false;\n"
+        "\t\t\t}\n"
+        "\t\t\t_camera->convertVoxelToScreen(_projectile->getPosition(), &bulletPositionScreen);\n"
+        "\t\t}\n"
+        "\t\twhile (!enough);\n"
+        "\t}\n"
+        "}\n"
+        "#endif\n"
+        "void Map::draw()\n"
+        "{\n",
+        "camera follow function")))
+    results.append(("Map.cpp (camera follow called first)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t/* AMIGA-PORT dirty-rect cache - see the comment at amigaFullSig(). */\n"
+        "\tbool amPartial_ = false;\n",
+        "\t/* AMIGA-PORT dirty-rect cache - see the comment at amigaFullSig(). */\n"
+        "\tamigaFollowProjectile();   /* the camera moves first, then the cache looks */\n"
+        "\tbool amPartial_ = false;\n",
+        "camera follow called first")))
+
     for root, _dirs, files in os.walk(src):
         for fn in files:
             if not fn.endswith((".cpp", ".h")):
