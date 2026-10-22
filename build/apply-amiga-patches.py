@@ -11053,6 +11053,54 @@ def main():
         '#endif\n',
         "main build number include")))
 
+    # Video filters (2026-10-22): HQx and xBRZ switch upstream to a 32-bit
+    #     screen when the display is 2x-5x the base resolution, which the
+    #     port's 8-bit display layer cannot show (a black screen or worse).
+    #     "Scale" does nothing here (native/oxc-replace Zoom.cpp has one
+    #     nearest-neighbour path). So the list offers "Disabled" only and the
+    #     32-bit mode is never chosen.
+    results.append(("Screen.cpp (no 32-bit scaler)", edit(
+        os.path.join(src, "Engine", "Screen.cpp"),
+        "bool Screen::is32bitEnabled()\n"
+        "{\n",
+        "bool Screen::is32bitEnabled()\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\treturn false;   /* AMIGA-PORT: 8-bit displays only, no HQx/xBRZ */\n"
+        "#endif\n",
+        "no 32-bit scaler")))
+    results.append(("OptionsVideoState.cpp (filters: Disabled only)", edit(
+        os.path.join(src, "Menu", "OptionsVideoState.cpp"),
+        "\tfilterNames.push_back(tr(\"STR_DISABLED\"));\n"
+        "\tfilterNames.push_back(L\"Scale\");\n"
+        "\tfilterNames.push_back(L\"HQx\");\n"
+        "\tfilterNames.push_back(L\"xBRZ\");\n"
+        "\t_filters.push_back(\"\");\n"
+        "\t_filters.push_back(\"\");\n"
+        "\t_filters.push_back(\"\");\n"
+        "\t_filters.push_back(\"\");\n",
+        "\tfilterNames.push_back(tr(\"STR_DISABLED\"));\n"
+        "#ifdef __AMIGA__\n"
+        "\t_filters.push_back(\"\");   /* AMIGA-PORT: no scalers on this display */\n"
+        "#else\n"
+        "\tfilterNames.push_back(L\"Scale\");\n"
+        "\tfilterNames.push_back(L\"HQx\");\n"
+        "\tfilterNames.push_back(L\"xBRZ\");\n"
+        "\t_filters.push_back(\"\");\n"
+        "\t_filters.push_back(\"\");\n"
+        "\t_filters.push_back(\"\");\n"
+        "\t_filters.push_back(\"\");\n"
+        "#endif\n",
+        "filters disabled only")))
+    results.append(("OptionsVideoState.cpp (filters: selection)", edit(
+        os.path.join(src, "Menu", "OptionsVideoState.cpp"),
+        "\t_cbxFilter->setSelected(selFilter);\n",
+        "#ifdef __AMIGA__\n"
+        "\tselFilter = 0;   /* the one entry, whatever an old options.cfg says */\n"
+        "#endif\n"
+        "\t_cbxFilter->setSelected(selFilter);\n",
+        "filters selection")))
+
     for root, _dirs, files in os.walk(src):
         for fn in files:
             if not fn.endswith((".cpp", ".h")):
