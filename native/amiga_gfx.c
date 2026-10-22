@@ -2382,11 +2382,12 @@ int amigagfx_poll(AmigaGfxEvent *ev)
 		}
 		case IDCMP_MOUSEBUTTONS:
 			/* Without the title bar (amigaAppBar off) there is no depth gadget:
-			 * the top right corner of the screen does its job, unseen - a click
+			 * the top left corner of the screen does its job, unseen - a click
 			 * there sends the game screen to the back, like the gadget did. The
-			 * click and its release never reach the game. */
+			 * click and its release never reach the game. (Was the top right
+			 * corner; moved at the player's request.) */
 			if (code == SELECTDOWN && !g_win_mode && g_screen != NULL && g_yoff == 0 &&
-			    ev->x >= g_width - 16 && ev->y < 10) {
+			    ev->x < 16 && ev->y < 10) {
 				g_corner_down = 1;
 				ScreenToBack(g_screen);
 				break;
