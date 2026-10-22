@@ -11101,6 +11101,132 @@ def main():
         "\t_cbxFilter->setSelected(selFilter);\n",
         "filters selection")))
 
+    # Video options: a "Mixed" entry after 320x200 / 640x400 / 640x480
+    #     (2026-10-21). Mixed is amigaNativeScale: the Geoscape on a 320x200
+    #     screen, battles on a native 640x400 one. Each entry sets the scales
+    #     the port is tuned with (as tools' perf-scenes): 320x200 and 640x480
+    #     original scale (640x480 = the 2x picture), 640x400 "full display"
+    #     (native), Mixed Geoscape original / Battlescape 2x. The switch goes
+    #     through the "new" display options like the resolution itself
+    #     (newAmigaNativeScale), so OK applies it and the confirm countdown and
+    #     Cancel put it back.
+    results.append(("Options.inc.h (newAmigaNativeScale)", edit(
+        os.path.join(src, "Engine", "Options.inc.h"),
+        "OPT int newDisplayWidth, newDisplayHeight, newBattlescapeScale, newGeoscapeScale, newWindowedModePositionX, newWindowedModePositionY;\n",
+        "OPT int newDisplayWidth, newDisplayHeight, newBattlescapeScale, newGeoscapeScale, newWindowedModePositionX, newWindowedModePositionY;\n"
+        "OPT bool newAmigaNativeScale; /* AMIGA-PORT: amigaNativeScale pending in the video options */\n",
+        "newAmigaNativeScale var")))
+    results.append(("Options.cpp (newAmigaNativeScale backup)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\tOptions::newBorderless = Options::borderless;\n"
+        "}\n",
+        "\tOptions::newBorderless = Options::borderless;\n"
+        "#ifdef __AMIGA__\n"
+        "\tOptions::newAmigaNativeScale = Options::amigaNativeScale;\n"
+        "#endif\n"
+        "}\n",
+        "newAmigaNativeScale backup")))
+    results.append(("Options.cpp (newAmigaNativeScale switch)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\tstd::swap(borderless, newBorderless);\n",
+        "\tstd::swap(borderless, newBorderless);\n"
+        "#ifdef __AMIGA__\n"
+        "\tstd::swap(amigaNativeScale, newAmigaNativeScale);\n"
+        "#endif\n",
+        "newAmigaNativeScale switch")))
+    results.append(("OptionsVideoState.h (Mixed entry)", edit(
+        os.path.join(src, "Menu", "OptionsVideoState.h"),
+        "\tint _resAmount, _resCurrent;\n",
+        "\tint _resAmount, _resCurrent;\n"
+        "#ifdef __AMIGA__\n"
+        "\tint _amResMixed;   /* index of the \"Mixed\" entry, after the real modes; -1 none */\n"
+        "\tvoid amigaApplyRes();\n"
+        "#endif\n",
+        "mixed entry members")))
+    results.append(("OptionsVideoState.cpp (Mixed entry in the list)", edit(
+        os.path.join(src, "Menu", "OptionsVideoState.cpp"),
+        "\t// Get available fullscreen modes\n",
+        "#ifdef __AMIGA__\n"
+        "\t_amResMixed = -1;\n"
+        "#endif\n"
+        "\t// Get available fullscreen modes\n",
+        "mixed entry init")))
+    results.append(("OptionsVideoState.cpp (Mixed entry count)", edit(
+        os.path.join(src, "Menu", "OptionsVideoState.cpp"),
+        "\t\t_resAmount = i;\n",
+        "\t\t_resAmount = i;\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t_amResMixed = _resAmount++;\n"
+        "\t\tif (Options::amigaNativeScale) _resCurrent = _amResMixed;\n"
+        "#endif\n",
+        "mixed entry count")))
+    results.append(("OptionsVideoState.cpp (Mixed entry shown)", edit(
+        os.path.join(src, "Menu", "OptionsVideoState.cpp"),
+        "\t_txtDisplayHeight->setText(ssH.str());\n"
+        "\n"
+        "\t_btnDisplayResolutionUp->onMouseClick",
+        "\t_txtDisplayHeight->setText(ssH.str());\n"
+        "#ifdef __AMIGA__\n"
+        "\tif (_amResMixed >= 0 && _resCurrent == _amResMixed)\n"
+        "\t{\n"
+        "\t\t_txtDisplayWidth->setText(L\"MIXED\");\n"
+        "\t\t_txtDisplayX->setText(L\"\");\n"
+        "\t\t_txtDisplayHeight->setText(L\"\");\n"
+        "\t}\n"
+        "#endif\n"
+        "\n"
+        "\t_btnDisplayResolutionUp->onMouseClick",
+        "mixed entry shown")))
+    results.append(("OptionsVideoState.cpp (Mixed entry chosen)", edit(
+        os.path.join(src, "Menu", "OptionsVideoState.cpp"),
+        "void OptionsVideoState::updateDisplayResolution()\n"
+        "{\n",
+        "#ifdef __AMIGA__\n"
+        "/* the entry's display, scales and native-scale switch, as pending options */\n"
+        "void OptionsVideoState::amigaApplyRes()\n"
+        "{\n"
+        "\tint geo_ = SCALE_ORIGINAL, battle_ = SCALE_ORIGINAL;\n"
+        "\tif (_resCurrent == _amResMixed)\n"
+        "\t{\n"
+        "\t\tOptions::newAmigaNativeScale = true;\n"
+        "\t\tOptions::newDisplayWidth = Screen::ORIGINAL_WIDTH;\n"
+        "\t\tOptions::newDisplayHeight = Screen::ORIGINAL_HEIGHT;\n"
+        "\t\tbattle_ = SCALE_2X;\n"
+        "\t\t_txtDisplayWidth->setText(L\"MIXED\");\n"
+        "\t\t_txtDisplayX->setText(L\"\");\n"
+        "\t\t_txtDisplayHeight->setText(L\"\");\n"
+        "\t}\n"
+        "\telse\n"
+        "\t{\n"
+        "\t\tOptions::newAmigaNativeScale = false;\n"
+        "\t\tif (_res[_resCurrent]->w == 640 && _res[_resCurrent]->h == 400)\n"
+        "\t\t\tgeo_ = battle_ = SCALE_SCREEN;   /* native 640x400 */\n"
+        "\t\t_txtDisplayX->setText(L\"x\");\n"
+        "\t}\n"
+        "\tOptions::newGeoscapeScale = geo_;\n"
+        "\tOptions::newBattlescapeScale = battle_;\n"
+        "\t_cbxGeoScale->setSelected(geo_);\n"
+        "\t_cbxBattleScale->setSelected(battle_);\n"
+        "}\n"
+        "\n"
+        "#endif\n"
+        "void OptionsVideoState::updateDisplayResolution()\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tamigaApplyRes();\n"
+        "\tif (_resCurrent == _amResMixed) return;\n"
+        "#endif\n",
+        "mixed entry chosen")))
+    for which_ in ("Width", "Height"):
+        results.append(("OptionsVideoState.cpp (typed %s leaves Mixed)" % which_, edit(
+            os.path.join(src, "Menu", "OptionsVideoState.cpp"),
+            "void OptionsVideoState::txtDisplay%sChange(Action *)\n{\n" % which_,
+            "void OptionsVideoState::txtDisplay%sChange(Action *)\n{\n"
+            "#ifdef __AMIGA__\n"
+            "\tOptions::newAmigaNativeScale = false;   /* a typed size is a real mode */\n"
+            "#endif\n" % which_,
+            "typed size leaves mixed")))
+
     for root, _dirs, files in os.walk(src):
         for fn in files:
             if not fn.endswith((".cpp", ".h")):
