@@ -196,7 +196,7 @@ def img(path, w=180):
 
 story = []
 story += [P("AmiXcom na RTG – poprawki i pomiary", "h1"),
-          P("Gałąź <b>feat/battle-scroll-640</b>, commity z 20–22.10.2026. Wszystkie liczby zmierzone na prawdziwych "
+          P("Gałąź <b>feat/battle-scroll-640</b>, commity z 20–23.10.2026. Wszystkie liczby zmierzone na prawdziwych "
             "Amigach przez AmiAgenta (sondy <i>amigaPerfLog</i>, sceny sterowane skryptem), nie w emulatorze."),
           P("<b>Maszyny:</b> Amiga 1 – A1200, Warp1260 (68060), AmigaOS 3.2, Picasso96 2.455; Amiga 2 – A4000, "
             "Warp4070 (68060), AmigaOS 3.2. Obie karty mają tę samą grafikę RTG (FPGA), wyniki obu maszyn są zbliżone "
@@ -240,6 +240,10 @@ story.append(table([
      "Tura obcych: 33 różnice → 0 na 1200 porównań", "A1200 / Warp1260"],
     ["4376ae0", "22.10", "Każda zmiana terenu (zniszczenie, drzwi) zgłasza pole do przerysowania",
      "Granaty i tura obcych: 0 różnic na 600 porównań", "A1200 / Warp1260"],
+    ["89178e2", "23.10", "Zrzut ekranu (F12): 8-bitowy PNG z paletą, bez kompresji",
+     "F12 zamykał grę → 2 zrzuty po 65 KB, gra działa dalej", "A1200 / Warp1260"],
+    ["7f17e89", "23.10", "Niewidoczny przełącznik ekranów w lewym górnym rogu (był w prawym)",
+     "Sprawdzone przez gracza", "A1200 / Warp1260"],
 ], [17, 11, 62, 60, 30]))
 story.append(Spacer(1, 6))
 story.append(img(img_battle, 175))
@@ -411,6 +415,11 @@ story.append(table([
     ["4376ae0", "Ściana zniszczona 3–5 pól od wybuchu mogła zostać w obrazie mapy (znalezione w kodzie, nie zaobserwowane)",
      "Zmiana części pola (setMapData) nie trafiała na listę zmienionych pól; teraz każda zmiana terenu ją zgłasza",
      "2 granaty i tura obcych: 600 porównań, 0 różnic"],
+    ["89178e2", "F12 (zrzut ekranu) zamykał grę natychmiast, bez Guru i bez wpisu w logu",
+     "Oryginał kopiuje ekran do powierzchni 24-bit, czego warstwa obrazu portu nie umie (tylko 8 bpp); po zmianie na 8-bitowy PNG "
+     "z paletą gra dalej padała w kompresji lodepng (prawdopodobnie funkcja porównująca dla qsort, która nigdy nie zwraca 0). "
+     "Zapis bez kompresji, każdy krok w logu",
+     "menu główne, F12 dwa razy: 2 pliki po 65 048 bajtów, poprawne kolory, gra działa dalej"],
 ], [17, 45, 78, 40]))
 
 story.append(Spacer(1, 8))
@@ -426,6 +435,8 @@ story.append(KeepTogether([P("10. Opcje i menu (63c93e0, 541852d, 0a7b71d, a722f
          "HQx/xBRZ przełączają na ekran 32-bit, którego warstwa obrazu portu nie pokazuje; „Scale” nic tu nie robi"],
         ["63c93e0, 541852d", "Menu: „AmiXcom” / „Version RTG &lt;numer&gt;”; $VER: AmiXcom &lt;numer&gt; (&lt;data&gt;)",
          "Gracz i polecenie Version widzą, która to wersja"],
+        ["7f17e89", "Ekran bez paska tytułu: kliknięcie w lewy górny róg (16×10 pikseli) przenosi ekran gry za Workbench",
+         "Na życzenie gracza (wcześniej prawy górny róg)"],
     ], [30, 75, 75])]))
 
 story.append(Spacer(1, 8))
@@ -440,7 +451,7 @@ story.append(KeepTogether([P("11. Testy opcji na prawdziwych Amigach (22.10)", "
         ["4", "battleSmoothCamera", "Błąd znaleziony i poprawiony (89b76dc)"],
         ["5", "battleExplosionHeight / wybuchy", "„Duch” po wybuchu nieodtworzony; przy okazji poprawki 224dbf4 i 4376ae0"],
     ], [8, 72, 100]),
-    P("Otwarte: F12 (zrzut ekranu) zamyka grę bez śladu – przyczyna nieustalona. Wysyłka przez AmiAgenta raz uszkodziła "
+    P("F12 (zrzut ekranu) zamykał grę bez śladu – naprawione w 89178e2 (rozdział 9). Wysyłka przez AmiAgenta raz uszkodziła "
       "60 bajtów binarki; każdy wgrany plik jest teraz sprawdzany sumą SHA-256.", "small")]))
 
 story.append(P("12. Jak mierzono i sprawdzano", "h2"))
@@ -452,15 +463,15 @@ story.append(P("• <b>amigaFrameSkip 2</b> – każda klatka z szybkiej ścież
                "zrobionym zwykłą drogą i odczytanym z karty: 0 różnic."))
 story.append(P("• <b>Numer wersji</b> – liczba commitów: w menu głównym „Version RTG &lt;numer&gt;” (63c93e0; wcześniej, "
                "od 9924b7f, pod licznikiem FPS), w poleceniu Version ($VER, 541852d) i z identyfikatorem, np. „build: 68 224dbf4+”, "
-               "w sdlmini.log. Ekran bez paska tytułu (amigaAppBar wyłączone): kliknięcie w prawy górny róg (16×10 pikseli) "
-               "przenosi ekran gry za Workbench."))
+               "w sdlmini.log. Ekran bez paska tytułu (amigaAppBar wyłączone): kliknięcie w lewy górny róg (16×10 pikseli, "
+               "7f17e89; wcześniej prawy) przenosi ekran gry za Workbench."))
 story.append(P("• <b>Testy z graczem</b> (22.10) – błędy, których skrypt nie wywoła (tura obcych z walką, rzuty granatem), "
                "sprawdzane w grze prowadzonej przez użytkownika z <i>amigaMapVerify</i>; log porównuje każdą klatkę."))
 story.append(P("• <b>amigaAutoLoad</b> (35fd59b) – gra wczytuje podany zapis od razu po starcie; test zaczyna się na polu walki "
                "po ~2 minutach zamiast po przejściu menu, globusa i ekranu wyposażenia."))
 story.append(Spacer(1, 6))
 story.append(P("Zakresy (np. 25–31 kl./s) to rozrzut między oknami pomiarowymi tej samej sceny. Liczby z commitów 8eed426 "
-               "i 8ff2ed4 pochodzą z A1200 / Warp1260, kolejne do 641b926 z A4000 / Warp4070, z 22.10 – z obu (kolumna „Maszyna”); "
+               "i 8ff2ed4 pochodzą z A1200 / Warp1260, kolejne do 641b926 z A4000 / Warp4070, z 22–23.10 – z obu (kolumna „Maszyna”); "
                "karty graficzne są takie same.",
                "small"))
 
@@ -468,7 +479,7 @@ def footer(c, d):
     c.saveState()
     c.setFont("Arial", 7.5)
     c.setFillColor(colors.HexColor("#666666"))
-    c.drawString(15 * mm, 9 * mm, "AmiXcom – poprawki RTG, gałąź feat/battle-scroll-640, 22.10.2026")
+    c.drawString(15 * mm, 9 * mm, "AmiXcom – poprawki RTG, gałąź feat/battle-scroll-640, 23.10.2026")
     c.drawRightString(195 * mm, 9 * mm, "str. %d" % d.page)
     c.restoreState()
 

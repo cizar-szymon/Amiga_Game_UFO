@@ -74,16 +74,22 @@ Maszyny:
 
 ## Inne sprawy otwarte
 
-- **F12 (zrzut ekranu) zamyka grę bez śladu.** Odtworzone w menu głównym na Amidze 2: proces
-  znika, nie ma ani `CPU TRAP`, ani `hang.log`. `Screen::screenshot` tworzy powierzchnię
-  24-bitową, a sdlmini blituje tylko 8 bpp (zwraca -1), potem idzie `lodepng::encode`. Przyczyny
-  jeszcze nie ustalono. Możliwa poprawka: zapis 8-bitowego PNG z paletą.
+- ~~F12 (zrzut ekranu) zamyka grę bez śladu.~~ **Naprawione 23.10, commit `89178e2`.**
+  - Oryginał tworzy powierzchnię 24-bitową, a sdlmini blituje tylko 8 bpp.
+  - Po zmianie na 8-bitowy PNG z paletą gra dalej padała w kompresji lodepng. Prawdopodobna
+    przyczyna: `bpmnode_compare()` nigdy nie zwraca 0 przy `qsort` z libnix; nie potwierdzono.
+  - Teraz zapis odbywa się bez kompresji: 65 KB w 320×200, ok. 256 KB w 640×400. Pliki trafiają
+    do `user/xcom1/screenNNN.png`.
+  - Sprawdzone na Amidze 1 (`winuae/perf-real/f12-test.ps1`).
+  - Klawiatura Amigi nie ma F12, więc błąd wywoływały tylko klawiatura PC i autoinput.
+- **Przełącznik ekranów** (ekran bez paska tytułu) jest w lewym górnym rogu: commit `7f17e89`,
+  sprawdzone przez użytkownika.
 - **Wysyłka przez AmiAgenta raz uszkodziła plik.** 60 złych bajtów od pozycji 10 158 080 w
   13-MB binarce. `put` zgłasza przekroczenie czasu, choć plik dochodzi. Każdy wgrany plik
   sprawdzać: pobrać (`get`) i porównać sumę SHA-256.
 - **Ikony UFO.**
-  - Amiga 1: build 68, sprawdzony sumą, zawiera `224dbf4` i `4376ae0`.
-  - Amiga 2: starsza wersja, bez obu poprawek. Podmienić na build 68 i sprawdzić sumą.
+  - Amiga 1: build 69, sprawdzony sumą, zawiera `224dbf4`, `4376ae0`, `89178e2` i `7f17e89`.
+  - Amiga 2: starsza wersja, bez tych poprawek. Podmienić na build 69 i sprawdzić sumą.
 - **Poza commitem:** sonda czasu przeładowania modów (w `apply-amiga-patches.py`), eksperyment
   fastmalloc (`build.sh`, `native/amiga_fastmalloc.c`, `docker/build.ps1 -FastMalloc`) i `raporty/`.
 
