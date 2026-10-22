@@ -11465,6 +11465,77 @@ def main():
         "\tAmigaTileChanged(_pos.x, _pos.y);   /* the map cache repaints this column (6tc) */\n",
         "terrain changes reported")))
 
+    # 6shot. The screenshot key (F12) ended the game at once, without a Guru
+    #        or a log line (main menu, Warp4070, 2026-10-22). Upstream blits
+    #        the screen into a 24-bit surface for a 24-bit PNG; sdlmini blits
+    #        8 bpp only. The Amiga writes the 8-bit display surface as an
+    #        8-bit PNG with its palette instead, encoded in memory and saved
+    #        through stdio, each step logged. Uncompressed (stored blocks):
+    #        with lodepng's deflate the game still ended, "encoding" the last
+    #        line - likely bpmnode_compare(), which never returns 0, under
+    #        libnix's qsort. After: F12 twice in the main menu, two
+    #        65048-byte PNGs, the game ran on (Warp1260, 2026-10-23).
+    results.append(("Screen.cpp (screenshot: 8-bit PNG with the palette)", edit(
+        os.path.join(src, "Engine", "Screen.cpp"),
+        "void Screen::screenshot(const std::string &filename) const\n"
+        "{\n",
+        "void Screen::screenshot(const std::string &filename) const\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* AMIGA-PORT (6shot): the 8-bit display surface as an 8-bit PNG with\n"
+        "\t * its palette - sdlmini cannot blit into upstream's 24-bit surface. */\n"
+        "\tchar b_[200];\n"
+        "\tconst int w_ = _screen->w, h_ = _screen->h;\n"
+        "\tsnprintf(b_, sizeof b_, \"screenshot: %dx%d, %d bpp -> %s\", w_, h_, (int)_screen->format->BitsPerPixel, filename.c_str());\n"
+        "\tSDLmini_Log(b_);\n"
+        "\tif (_screen->format->BitsPerPixel != 8 || _screen->pixels == 0) { SDLmini_Log(\"screenshot: not an 8-bit screen, nothing saved\"); return; }\n"
+        "\ttry\n"
+        "\t{\n"
+        "\t\tstd::vector<unsigned char> img_((size_t)w_ * h_);\n"
+        "\t\tfor (int y_ = 0; y_ < h_; ++y_)\n"
+        "\t\t\tmemcpy(&img_[(size_t)y_ * w_], (const Uint8 *)_screen->pixels + (size_t)y_ * _screen->pitch, w_);\n"
+        "\t\tconst SDL_Palette *pal_ = _screen->format->palette;\n"
+        "\t\tconst SDL_Color *col_ = (pal_ && pal_->colors && pal_->ncolors >= 256) ? pal_->colors : deferredPalette;\n"
+        "\t\tlodepng::State st_;\n"
+        "\t\tst_.info_raw.colortype = LCT_PALETTE; st_.info_raw.bitdepth = 8;\n"
+        "\t\tst_.info_png.color.colortype = LCT_PALETTE; st_.info_png.color.bitdepth = 8;\n"
+        "\t\tst_.encoder.auto_convert = 0;\n"
+        "\t\t/* stored blocks, no filters: lodepng's deflate ended the game here\n"
+        "\t\t * (\"encoding\" was the last log line, Warp1260, 2026-10-23) */\n"
+        "\t\tst_.encoder.zlibsettings.btype = 0;\n"
+        "\t\tst_.encoder.filter_palette_zero = 1;\n"
+        "\t\tst_.encoder.filter_strategy = LFS_ZERO;\n"
+        "\t\tfor (int i_ = 0; i_ < 256; ++i_)\n"
+        "\t\t{\n"
+        "\t\t\tlodepng_palette_add(&st_.info_png.color, col_[i_].r, col_[i_].g, col_[i_].b, 255);\n"
+        "\t\t\tlodepng_palette_add(&st_.info_raw, col_[i_].r, col_[i_].g, col_[i_].b, 255);\n"
+        "\t\t}\n"
+        "\t\tSDLmini_Log(\"screenshot: encoding\");\n"
+        "\t\tstd::vector<unsigned char> png_;\n"
+        "\t\tunsigned err_ = lodepng::encode(png_, img_, w_, h_, st_);\n"
+        "\t\tif (!err_) { SDLmini_Log(\"screenshot: writing\"); err_ = lodepng::save_file(png_, filename); }\n"
+        "\t\tsnprintf(b_, sizeof b_, \"screenshot: %s, %lu bytes\", err_ ? lodepng_error_text(err_) : \"saved\", (unsigned long)png_.size());\n"
+        "\t\tSDLmini_Log(b_);\n"
+        "\t}\n"
+        "\tcatch (std::exception &e_)\n"
+        "\t{\n"
+        "\t\tsnprintf(b_, sizeof b_, \"screenshot: failed: %s\", e_.what());\n"
+        "\t\tSDLmini_Log(b_);\n"
+        "\t}\n"
+        "\treturn;\n"
+        "#endif\n",
+        "screenshot as an 8-bit PNG")))
+    results.append(("Screen.cpp (screenshot: includes)", edit(
+        os.path.join(src, "Engine", "Screen.cpp"),
+        "#include \"../lodepng.h\"\n",
+        "#include \"../lodepng.h\"\n"
+        "#ifdef __AMIGA__\n"
+        "#include <cstring>\n"
+        "#include <cstdio>\n"
+        "extern \"C\" void SDLmini_Log(const char *msg);\n"
+        "#endif\n",
+        "screenshot includes")))
+
     for root, _dirs, files in os.walk(src):
         for fn in files:
             if not fn.endswith((".cpp", ".h")):
