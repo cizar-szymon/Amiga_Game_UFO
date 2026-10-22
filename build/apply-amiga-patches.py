@@ -11441,6 +11441,30 @@ def main():
         "\t\t\tif (nBad_ <= 300 || (nBad_ % 100) == 0)\n",
         "mapverify reports more")))
 
+    # 6tc. Terrain that changes reports its column to the map cache. A tile
+    #      part destroyed (Tile::destroy) or swapped (a door) goes through
+    #      setMapData(), which told the cache nothing: an explosion marked
+    #      only the tiles within 2 of its centre and the columns whose shade
+    #      changed, while a grenade wrecks walls up to 4-5 tiles away. Such a
+    #      wall stayed on the cached picture until the next full compose.
+    #      Found reading the code, not seen yet (misja1, a grenade at the
+    #      turn change: mapverify 0 in 400 checks, Warp1260, 2026-10-22).
+    #      After: 0 in 600 checks, two grenades and an alien turn.
+    #      At map build every tile reports: the list overflows into the
+    #      reveal counter, a full compose, which the first frame is anyway.
+    results.append(("Tile.cpp (terrain changes reported to the map cache)", edit(
+        os.path.join(src, "Savegame", "Tile.cpp"),
+        "\t_mapDataSetID[part] = mapDataSetID;\n"
+        "#ifdef __AMIGA__\n"
+        "\t_amigaMaxYOff = -1;\n"
+        "\tAmigaPathMemoBump();\n",
+        "\t_mapDataSetID[part] = mapDataSetID;\n"
+        "#ifdef __AMIGA__\n"
+        "\t_amigaMaxYOff = -1;\n"
+        "\tAmigaPathMemoBump();\n"
+        "\tAmigaTileChanged(_pos.x, _pos.y);   /* the map cache repaints this column (6tc) */\n",
+        "terrain changes reported")))
+
     for root, _dirs, files in os.walk(src):
         for fn in files:
             if not fn.endswith((".cpp", ".h")):
