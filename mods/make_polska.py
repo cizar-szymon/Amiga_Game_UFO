@@ -89,7 +89,7 @@ os.makedirs(out, exist_ok=True)
 with open(os.path.join(out, 'Polska.rul'), 'w', encoding='utf-8', newline='\n') as f:
     f.write('\n'.join(rul))
 with open(os.path.join(out, 'metadata.yml'), 'w', encoding='utf-8', newline='\n') as f:
-    f.write('name: "Polska"\n'
+    f.write('name: "Polska on map"\n'
             'version: 1.0\n'
             'description: "Poland (no funding) and Warsaw on the globe."\n'
             'author: AmiXcom\n'
