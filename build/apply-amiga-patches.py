@@ -11361,6 +11361,86 @@ def main():
         "\tbool amPartial_ = false;\n",
         "camera follow called first")))
 
+    # 6hm. The hidden-movement screen and the dirty-rect cache. On an alien
+    #      turn with no alien in view amigaComposeVisible() blits the message
+    #      instead of the map - also when called to repair the dirty boxes of
+    #      a cached picture. The boxes' marks were then cleared though nothing
+    #      was repaired, and the picture, still valid, came back stale once an
+    #      alien was in view: terrain a shot destroyed meanwhile, units moved
+    #      (misja1, an alien turn: mapverify 30 mismatches, up to 26565 px,
+    #      Warp1260, 2026-10-22). With a valid phase and no marks the cached
+    #      map was even shown instead of the message. Now draw() leaves the
+    #      cache alone while the message is up: the marks wait for the map.
+    #      After: 0 mismatches in 1200 checks over two alien turns with
+    #      shots at the terrain (Warp1260, 2026-10-22).
+    results.append(("Map.h (map shown or the hidden-movement screen)", edit(
+        os.path.join(src, "Battlescape", "Map.h"),
+        "\tvoid amigaFollowProjectile();   /* drawTerrain()'s camera follow, run before the cache */\n",
+        "\tvoid amigaFollowProjectile();   /* drawTerrain()'s camera follow, run before the cache */\n"
+        "\tbool amigaMapShown();   /* amigaComposeVisible() draws the map, not the hidden-movement screen */\n",
+        "map shown decl")))
+    results.append(("Map.cpp (map shown or the hidden-movement screen)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "#ifdef __AMIGA__\n"
+        "/* drawTerrain()'s camera follow, unchanged, for draw() to run before the\n",
+        "#ifdef __AMIGA__\n"
+        "/* amigaComposeVisible()'s choice between the map and the hidden-movement\n"
+        " * screen, the same test (it sets the same two flags it sets again). */\n"
+        "bool Map::amigaMapShown()\n"
+        "{\n"
+        "\tTile *t;\n"
+        "\t_projectileInFOV = _save->getDebugMode();\n"
+        "\tif (_projectile)\n"
+        "\t{\n"
+        "\t\tt = _save->getTile(Position(_projectile->getPosition(0).x/16, _projectile->getPosition(0).y/16, _projectile->getPosition(0).z/24));\n"
+        "\t\tif (_save->getSide() == FACTION_PLAYER || (t && t->getVisible())) _projectileInFOV = true;\n"
+        "\t}\n"
+        "\t_explosionInFOV = _save->getDebugMode();\n"
+        "\tfor (std::list<Explosion*>::iterator i = _explosions.begin(); i != _explosions.end(); ++i)\n"
+        "\t{\n"
+        "\t\tt = _save->getTile(Position((*i)->getPosition().x/16, (*i)->getPosition().y/16, (*i)->getPosition().z/24));\n"
+        "\t\tif (t && ((*i)->isBig() || t->getVisible())) { _explosionInFOV = true; break; }\n"
+        "\t}\n"
+        "\treturn (_save->getSelectedUnit() && _save->getSelectedUnit()->getVisible()) || _unitDying || _save->getSelectedUnit() == 0 || _save->getDebugMode() || _projectileInFOV || _explosionInFOV;\n"
+        "}\n"
+        "#endif\n"
+        "\n"
+        "#ifdef __AMIGA__\n"
+        "/* drawTerrain()'s camera follow, unchanged, for draw() to run before the\n",
+        "map shown function")))
+    results.append(("Map.cpp (no cache under the hidden-movement screen)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t/* current phase usable? */\n"
+        "\t\tif (_fcValid[ph_] && _fcPix[ph_] != 0)\n",
+        "\t\t/* current phase usable? Not under the hidden-movement screen: the\n"
+        "\t\t * full path below draws it and the marks wait for the map (6hm). */\n"
+        "\t\tconst bool shown_ = amigaMapShown();\n"
+        "\t\t{\n"
+        "\t\t\tstatic int last_ = -1;\n"
+        "\t\t\tif (Options::amigaMapVerify && last_ != (int)shown_) SDLmini_Log(shown_ ? \"mapverify: map shown\" : \"mapverify: hidden-movement screen\");\n"
+        "\t\t\tlast_ = (int)shown_;\n"
+        "\t\t}\n"
+        "\t\tif (shown_ && _fcValid[ph_] && _fcPix[ph_] != 0)\n",
+        "no cache under the hidden-movement screen")))
+    results.append(("Map.cpp (mapverify logs explosions)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\t_fcExplN = (int)_explosions.size();\n"
+        "\t\t\tif (!_explosions.empty())\n",
+        "\t\t\tif (Options::amigaMapVerify && _fcExplN == 0 && !_explosions.empty())\n"
+        "\t\t\t{\n"
+        "\t\t\t\tchar b_[96]; Position ep_ = _explosions.front()->getPosition();\n"
+        "\t\t\t\tsnprintf(b_, sizeof b_, \"mapverify: explosion at tile %d,%d,%d (%s)\", ep_.x / 16, ep_.y / 16, ep_.z / 24, _explosions.front()->isBig() ? \"big\" : \"small\");\n"
+        "\t\t\t\tSDLmini_Log(b_);\n"
+        "\t\t\t}\n"
+        "\t\t\t_fcExplN = (int)_explosions.size();\n"
+        "\t\t\tif (!_explosions.empty())\n",
+        "mapverify logs explosions")))
+    results.append(("Map.cpp (mapverify reports 300 mismatches)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\tif (nBad_ <= 30 || (nBad_ % 100) == 0)\n",
+        "\t\t\tif (nBad_ <= 300 || (nBad_ % 100) == 0)\n",
+        "mapverify reports more")))
+
     for root, _dirs, files in os.walk(src):
         for fn in files:
             if not fn.endswith((".cpp", ".h")):
