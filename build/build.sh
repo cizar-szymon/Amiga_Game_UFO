@@ -286,6 +286,12 @@ if [ "$AMIGA_HEAPGUARD" = "1" ]; then
 else
 	HGSUF=""
 	NATIVE_OBJS="$NATIVE_OBJS $(compile_c "$NATIVE" amiga_heapguard_stub.c)"
+	# AMIGA_FASTMALLOC=1: size-class malloc instead of libnix's pool-based
+	# one (native/amiga_fastmalloc.c) - EXPERIMENT, binaries get -fm.
+	if [ "$AMIGA_FASTMALLOC" = "1" ]; then
+		HGSUF="-fm"
+		NATIVE_OBJS="$NATIVE_OBJS $(compile_c "$NATIVE" amiga_fastmalloc.c)"
+	fi
 fi
 
 log "assembling c2p"
