@@ -1780,6 +1780,9 @@ def main():
     #     OptionsAmigaState.*); everything below wires it in.
     results.append(("Menu/OptionsAmigaState.h", replace_file(src, os.path.join("Menu", "OptionsAmigaState.h"))))
     results.append(("Menu/OptionsAmigaState.cpp", replace_file(src, os.path.join("Menu", "OptionsAmigaState.cpp"))))
+    # 6prog: the picture of the save/load progress box (a state never pushed)
+    results.append(("Menu/AmigaProgressState.h", replace_file(src, os.path.join("Menu", "AmigaProgressState.h"))))
+    results.append(("Menu/AmigaProgressState.cpp", replace_file(src, os.path.join("Menu", "AmigaProgressState.cpp"))))
     results.append(("Options.inc.h (amiga options)", edit(
         os.path.join(src, "Engine", "Options.inc.h"),
         "OPT std::string language, useOpenGLShader;\n",
@@ -11750,6 +11753,161 @@ def main():
         "extern \"C\" void SDLmini_ForceFullFrame(void);\n"
         "#endif\n",
         "F10 bug report includes")))
+
+    # 6prog. A progress box while a game is saved or loaded (amiga_gfx.c):
+    #        loading a battle took ~16.5 s on the Warp4070 (misja4: YAML
+    #        parse 9.7 s, the rest of SavedGame::load ~1 s, the battle ~0.9 s,
+    #        ~3.9 s with no probe - the parsed tree freed, the screen
+    #        reopened -, map resources 0.7 s) with nothing moving, and the
+    #        player could not tell it from a hang. The figure follows the
+    #        parse by the characters it has read (YamlTickHook, every 8 KB)
+    #        and then the phases above; the box goes when the state is done
+    #        and the whole screen is redrawn over it.
+    results.append(("SavedGame.cpp (progress: helpers)", edit(
+        os.path.join(src, "Savegame", "SavedGame.cpp"),
+        '#include "amiga_yamlout.h"\n'
+        'extern "C" void SDLmini_Log(const char *msg);\n',
+        '#include "amiga_yamlout.h"\n'
+        '#include "amiga_gfx.h"\n'
+        '#include <sys/stat.h>\n'
+        'extern "C" void SDLmini_Log(const char *msg);\n'
+        'extern "C" void (*YamlTickHook)(unsigned long);\n'
+        'extern "C" unsigned long YamlTickCount;\n'
+        '/* 6prog: the parse moves the progress box from 0 to amPgParse_ per mille */\n'
+        'static unsigned long amPgBase_, amPgSize_;\n'
+        'static int amPgParse_ = 600;\n'
+        'static void amPgTick_(unsigned long n)\n'
+        '{\n'
+        '\tunsigned long d_ = (n - amPgBase_) / 64, all_ = amPgSize_ / 64 + 1;\n'
+        '\tif (d_ > all_) d_ = all_;\n'
+        '\tamigagfx_progress_set((int)((unsigned long)amPgParse_ * d_ / all_), amPgParse_);\n'
+        '}\n',
+        "progress helpers")))
+    results.append(("SavedGame.cpp (progress: load parse)", edit(
+        os.path.join(src, "Savegame", "SavedGame.cpp"),
+        "\tunsigned int ldT0_ = SDL_GetTicks();\n"
+        "\tstd::vector<YAML::Node> file = YAML::LoadAllFromFile(s);\n",
+        "\tunsigned int ldT0_ = SDL_GetTicks();\n"
+        "\t/* a battle save (~100-200 KB) spends ~60% of its load parsing, a\n"
+        "\t * Geoscape save (~20 KB) more of it (6prog) */\n"
+        "\t{ struct stat st_; amPgSize_ = (stat(s.c_str(), &st_) == 0) ? (unsigned long)st_.st_size : 0; }\n"
+        "\tamPgParse_ = amPgSize_ >= 60000 ? 600 : 700;\n"
+        "\tamPgBase_ = YamlTickCount;\n"
+        "\tvoid (*amPgOld_)(unsigned long) = YamlTickHook;\n"
+        "\tYamlTickHook = amPgTick_;\n"
+        "\tamigagfx_progress_set(0, amPgParse_);\n"
+        "\tstd::vector<YAML::Node> file;\n"
+        "\ttry { file = YAML::LoadAllFromFile(s); } catch (...) { YamlTickHook = amPgOld_; throw; }\n"
+        "\tYamlTickHook = amPgOld_;\n"
+        "\tamigagfx_progress_set(amPgParse_, amPgParse_ == 600 ? 680 : 850);\n",
+        "progress load parse")))
+    results.append(("SavedGame.cpp (progress: load end)", edit(
+        os.path.join(src, "Savegame", "SavedGame.cpp"),
+        "\t\t_battleGame = new SavedBattleGame();\n"
+        "\t\t_battleGame->load(battle, mod, this);\n"
+        "\t}\n"
+        "}\n",
+        "\t\t_battleGame = new SavedBattleGame();\n"
+        "\t\t_battleGame->load(battle, mod, this);\n"
+        "\t}\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* next: the parsed tree is freed, the caller reopens the screen (6prog) */\n"
+        "\tamigagfx_progress_set(amPgParse_ == 600 ? 680 : 850, amPgParse_ == 600 ? 880 : 990);\n"
+        "#endif\n"
+        "}\n",
+        "progress load end")))
+    results.append(("SavedGame.cpp (progress: save build)", edit(
+        os.path.join(src, "Savegame", "SavedGame.cpp"),
+        "\tunsigned int svT0_ = SDL_GetTicks(); /* TEMP save probe */\n",
+        "\tunsigned int svT0_ = SDL_GetTicks(); /* TEMP save probe */\n"
+        "\tamigagfx_progress_set(0, 850);   /* 6prog */\n",
+        "progress save build")))
+    results.append(("SavedGame.cpp (progress: save emit)", edit(
+        os.path.join(src, "Savegame", "SavedGame.cpp"),
+        "\tunsigned int svT1_ = SDL_GetTicks();\n",
+        "\tunsigned int svT1_ = SDL_GetTicks();\n"
+        "\tamigagfx_progress_set(850, 950);   /* 6prog */\n",
+        "progress save emit")))
+    results.append(("SavedGame.cpp (progress: save write)", edit(
+        os.path.join(src, "Savegame", "SavedGame.cpp"),
+        "\tsav << ydump_;\n",
+        "\tamigagfx_progress_set(950, 999);   /* 6prog */\n"
+        "\tsav << ydump_;\n",
+        "progress save write")))
+    results.append(("LoadGameState.cpp (progress)", edit(
+        os.path.join(src, "Menu", "LoadGameState.cpp"),
+        "\t\t// Load the game\n"
+        "\t\tSavedGame *s = new SavedGame();\n",
+        "\t\t// Load the game\n"
+        "#ifdef __AMIGA__\n"
+        "\t\tAmigaProgressState::begin(tr(\"STR_LOADING_GAME\"));   /* 6prog */\n"
+        "#endif\n"
+        "\t\tSavedGame *s = new SavedGame();\n",
+        "progress load begin")))
+    results.append(("LoadGameState.cpp (progress: map)", edit(
+        os.path.join(src, "Menu", "LoadGameState.cpp"),
+        "\t\t\t\t\t_game->getSavedGame()->getSavedBattle()->loadMapResources(_game->getMod());\n",
+        "#ifdef __AMIGA__\n"
+        "\t\t\t\t\tamigagfx_progress_set(900, 960);\n"
+        "#endif\n"
+        "\t\t\t\t\t_game->getSavedGame()->getSavedBattle()->loadMapResources(_game->getMod());\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t\t\t\tamigagfx_progress_set(960, 999);\n"
+        "#endif\n",
+        "progress load map")))
+    results.append(("LoadGameState.cpp (progress end)", edit(
+        os.path.join(src, "Menu", "LoadGameState.cpp"),
+        "\t\tCrossPlatform::flashWindow();\n"
+        "\t}\n"
+        "}\n",
+        "\t\tCrossPlatform::flashWindow();\n"
+        "#ifdef __AMIGA__\n"
+        "\t\tAmigaProgressState::end();   /* and the next frame is drawn in full */\n"
+        "#endif\n"
+        "\t}\n"
+        "}\n",
+        "progress load end")))
+    results.append(("LoadGameState.cpp (progress includes)", edit(
+        os.path.join(src, "Menu", "LoadGameState.cpp"),
+        'extern "C" void SDLmini_Log(const char *msg);\n'
+        'extern "C" unsigned int SDL_GetTicks(void);\n',
+        'extern "C" void SDLmini_Log(const char *msg);\n'
+        'extern "C" unsigned int SDL_GetTicks(void);\n'
+        '#include "amiga_gfx.h"\n'
+        '#include "AmigaProgressState.h"\n',
+        "progress load includes")))
+    results.append(("SaveGameState.cpp (progress)", edit(
+        os.path.join(src, "Menu", "SaveGameState.cpp"),
+        "\t\t// Save the game\n"
+        "\t\ttry\n",
+        "\t\t// Save the game\n"
+        "#ifdef __AMIGA__\n"
+        "\t\tAmigaProgressState::begin(tr(\"STR_SAVING_GAME\"));   /* 6prog */\n"
+        "#endif\n"
+        "\t\ttry\n",
+        "progress save begin")))
+    results.append(("SaveGameState.cpp (progress end)", edit(
+        os.path.join(src, "Menu", "SaveGameState.cpp"),
+        "\"TAC00.SCR\", _game->getMod()->getInterface(\"errorMessages\")->getElement(\"battlescapePalette\")->color));\n"
+        "\t\t}\n"
+        "\t}\n"
+        "}\n",
+        "\"TAC00.SCR\", _game->getMod()->getInterface(\"errorMessages\")->getElement(\"battlescapePalette\")->color));\n"
+        "\t\t}\n"
+        "#ifdef __AMIGA__\n"
+        "\t\tAmigaProgressState::end();   /* and the next frame is drawn in full */\n"
+        "#endif\n"
+        "\t}\n"
+        "}\n",
+        "progress save end")))
+    results.append(("SaveGameState.cpp (progress includes)", edit(
+        os.path.join(src, "Menu", "SaveGameState.cpp"),
+        '#include "SaveGameState.h"\n',
+        '#include "SaveGameState.h"\n'
+        '#ifdef __AMIGA__\n'
+        '#include "AmigaProgressState.h"\n'
+        '#endif\n',
+        "progress save includes")))
 
 
     for root, _dirs, files in os.walk(src):

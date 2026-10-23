@@ -245,6 +245,7 @@ static int   g_backend;        /* AMIGAGFX_BACKEND_* of the open screen */
 static int   g_rtg_method;
 static int   g_rtg_demoted;    /* log the LOCK->WLUT demotion once */
 static ULONG g_ctable[256];    /* CTABFMT_XRGB8 mirror of the palette */
+static volatile ULONG g_pal_gen;   /* bumped on every palette change (the progress box remaps) */
 
 /* ---- WINDOW mode (a window on the Workbench screen) ---------------------
  *
@@ -1388,7 +1389,8 @@ static int finish_window_open(void)
 	return 0;
 }
 
-int amigagfx_open(int w, int h, int show_bar, int backend)
+/* the body; amigagfx_open (below) holds the progress lock around it */
+static int amigagfx_open_(int w, int h, int show_bar, int backend)
 {
 	/* SA_Quiet must be OFF when the bar is wanted, or Intuition renders no
 	 * screen gadgetry at all; SA_ShowTitle keeps the bar in front of our
@@ -1580,7 +1582,7 @@ int amigagfx_open(int w, int h, int show_bar, int backend)
 
 static void dbuf_free(void);
 
-void amigagfx_close(void)
+static void amigagfx_close_(void)
 {
 	wb_pointer_free();
 	input_device_close();
@@ -1643,6 +1645,7 @@ void amigagfx_set_palette(const unsigned char *rgb, int first, int count)
 		                       (ULONG)rgb[i*3 + 2];
 	}
 	table[1 + count * 3] = 0UL;
+	g_pal_gen++;
 
 	/* WINDOW MODE STOPS HERE, and the reason is worth stating plainly: that
 	 * ViewPort belongs to WORKBENCH. Loading our palette into it would repaint
@@ -2415,4 +2418,280 @@ int amigagfx_poll(AmigaGfxEvent *ev)
 		}
 	}
 	return 1;
+}
+
+/* ---- progress box (long saves and loads) -----------------------------------
+ * Loading a battle takes ~16 s on a Warp 060 (the YAML parse alone ~10 s),
+ * saving one a few seconds, and nothing on the screen moves meanwhile: the
+ * player cannot tell a long load from a hang. So while the game is busy a
+ * small DOS process draws a box in the middle of the game screen - "Loading"
+ * or "Saving", a percentage and a turning spinner - ten times a second. It
+ * draws with graphics.library into the screen's bitmap through its own
+ * RastPort (no layers, no window), so it needs nothing from the busy task.
+ * The game only moves the percentage on (amigagfx_progress_set) and names a
+ * ceiling for the current phase; between two reports the figure creeps
+ * towards that ceiling, so it keeps moving through phases with no reports
+ * of their own (freeing the parsed tree, reopening the screen).
+ * The screen may be closed and reopened during a load (the Geoscape's
+ * 320x200, then the battle's mode): amigagfx_open and amigagfx_close hold
+ * g_pg_sem, which the process holds while it draws. The caller redraws the
+ * whole game screen after amigagfx_progress_end - the box is drawn behind
+ * the chunky buffer's back. */
+#include <exec/semaphores.h>
+#include <dos/dostags.h>
+#include <graphics/gfxbase.h>
+#include <graphics/rastport.h>
+
+extern struct GfxBase *GfxBase;
+
+static struct SignalSemaphore g_pg_sem;
+static int g_pg_sem_ready;
+static volatile int g_pg_quit, g_pg_running, g_pg_started;
+static volatile int g_pg_target, g_pg_cap;     /* per mille */
+static char g_pg_label[24];
+
+static void pg_sem_init(void)
+{
+	if (!g_pg_sem_ready) { InitSemaphore(&g_pg_sem); g_pg_sem_ready = 1; }
+}
+
+/* nearest palette entry to r,g,b (the game's palette, as loaded) */
+static int pg_pen(int r, int g, int b)
+{
+	int i, best = 0;
+	long bd = 0x7fffffffL;
+	for (i = 0; i < 256; i++) {
+		long dr = (long)((g_ctable[i] >> 16) & 0xff) - r;
+		long dg = (long)((g_ctable[i] >> 8) & 0xff) - g;
+		long db = (long)(g_ctable[i] & 0xff) - b;
+		long d = dr * dr + dg * dg + db * db;
+		if (d < bd) { bd = d; best = i; }
+	}
+	return best;
+}
+
+#define PG_W 168
+#define PG_H 32
+
+/* The box's picture, made by the game in its own style (AmigaProgressState):
+ * pixels in the palette it was drawn with, that palette, and the figure's
+ * glyphs. Drawn through a remap to whatever palette the screen has now - a
+ * load changes it twice. */
+#define PG_ART_MAX (192 * 64)
+#define PG_GLYPHS 11                      /* 0-9 and % */
+static UBYTE g_art[PG_ART_MAX], g_art_rgb[256 * 3];
+static UBYTE g_art_glyph[PG_GLYPHS][16 * 8], g_art_gw[PG_GLYPHS];
+static int g_art_w, g_art_h, g_art_gh, g_art_bright, g_art_dim, g_art_ok;
+static UBYTE g_art_map[256];
+static ULONG g_art_mapgen = 0xffffffffUL;
+static UBYTE g_art_buf[PG_ART_MAX];
+
+void amigagfx_progress_art(const unsigned char *img, int w, int h, const unsigned char *rgb,
+                           const unsigned char *glyphs, const unsigned char *widths, int gh,
+                           int bright, int dim)
+{
+	int i;
+	g_art_ok = 0;
+	if (w <= 0 || h <= 0 || w * h > PG_ART_MAX || gh <= 0 || gh > 16) return;
+	memcpy(g_art, img, (size_t)(w * h));
+	memcpy(g_art_rgb, rgb, sizeof g_art_rgb);
+	for (i = 0; i < PG_GLYPHS; i++) {
+		memcpy(g_art_glyph[i], glyphs + i * gh * 8, (size_t)(gh * 8));
+		g_art_gw[i] = widths[i];
+	}
+	g_art_w = w; g_art_h = h; g_art_gh = gh;
+	g_art_bright = bright; g_art_dim = dim;
+	g_art_mapgen = 0xffffffffUL;
+	g_art_ok = 1;
+}
+
+static int pg_pen(int r, int g, int b);
+
+static void pg_glyph(int gi, int x0, int y0)
+{
+	int x, y, w = g_art_gw[gi];
+	for (y = 0; y < g_art_gh; y++)
+		for (x = 0; x < w; x++) {
+			UBYTE c = g_art_glyph[gi][y * 8 + x];
+			int px = x0 + x, py = y0 + y;
+			if (c && px >= 0 && px < g_art_w && py >= 0 && py < g_art_h) g_art_buf[py * g_art_w + px] = c;
+		}
+}
+
+static void pg_draw_art(int permille, int phase)
+{
+	static const BYTE dots[8][2] = { {0,-5}, {3,-3}, {5,0}, {3,3}, {0,5}, {-3,3}, {-5,0}, {-3,-3} };
+	struct RastPort rp;
+	int i, n = 0, pct, tw = 0, x, y, x0, y0, cx, cy, line;
+	int dig[3];
+	ULONG gen = g_pal_gen;
+
+	if (g_screen == NULL || g_win_mode || g_width < g_art_w || g_height < g_art_h) return;
+	if (gen != g_art_mapgen) {   /* the screen's palette changed: remap */
+		for (i = 0; i < 256; i++)
+			g_art_map[i] = (UBYTE)pg_pen(g_art_rgb[i * 3], g_art_rgb[i * 3 + 1], g_art_rgb[i * 3 + 2]);
+		g_art_mapgen = gen;
+	}
+	memcpy(g_art_buf, g_art, (size_t)(g_art_w * g_art_h));
+	/* "42%" centred on the lower line, the spinner to its right */
+	pct = permille / 10;
+	if (pct > 99) pct = 99;
+	if (pct >= 10) dig[n++] = pct / 10;
+	dig[n++] = pct % 10;
+	dig[n++] = 10;
+	for (i = 0; i < n; i++) tw += g_art_gw[dig[i]] + 1;
+	line = g_art_h - g_art_gh - 9;
+	x = (g_art_w - tw) / 2 - 6;
+	for (i = 0; i < n; i++) { pg_glyph(dig[i], x, line); x += g_art_gw[dig[i]] + 1; }
+	cx = x + 12;
+	cy = line + g_art_gh / 2;
+	for (i = 0; i < 8; i++) {
+		UBYTE c = (UBYTE)(((i - phase) & 7) == 0 ? g_art_bright : g_art_dim);
+		int dx, dy;
+		for (dy = -1; dy <= 0; dy++)
+			for (dx = -1; dx <= 0; dx++) {
+				int px = cx + dots[i][0] + dx, py = cy + dots[i][1] + dy;
+				if (px >= 0 && px < g_art_w && py >= 0 && py < g_art_h) g_art_buf[py * g_art_w + px] = c;
+			}
+	}
+	for (i = 0; i < g_art_w * g_art_h; i++) g_art_buf[i] = g_art_map[g_art_buf[i]];
+	x0 = (g_width - g_art_w) / 2;
+	y0 = g_yoff + (g_height - g_art_h) / 2;
+	InitRastPort(&rp);
+	rp.BitMap = g_screen->RastPort.BitMap;
+	WriteChunkyPixels(&rp, (ULONG)x0, (ULONG)y0, (ULONG)(x0 + g_art_w - 1), (ULONG)(y0 + g_art_h - 1),
+	                  g_art_buf, (LONG)g_art_w);
+	(void)y;
+}
+
+static void pg_draw(int permille, int phase)
+{
+	static const BYTE dots[8][2] = { {0,-6}, {4,-4}, {6,0}, {4,4}, {0,6}, {-4,4}, {-6,0}, {-4,-4} };
+	struct RastPort rp;
+	char t[40];
+	int n = 0, i, x0, y0, cx, cy, pct, black, white, grey;
+	const char *l;
+
+	if (g_screen == NULL || g_win_mode || g_width < PG_W || g_height < PG_H) return;
+	black = pg_pen(0, 0, 0);
+	white = pg_pen(255, 255, 255);
+	grey  = pg_pen(96, 96, 96);
+	x0 = (g_width - PG_W) / 2;
+	y0 = g_yoff + (g_height - PG_H) / 2;
+	InitRastPort(&rp);
+	rp.BitMap = g_screen->RastPort.BitMap;
+	SetFont(&rp, GfxBase->DefaultFont);
+	SetDrMd(&rp, JAM1);
+	SetAPen(&rp, white);
+	RectFill(&rp, x0, y0, x0 + PG_W - 1, y0 + PG_H - 1);
+	SetAPen(&rp, black);
+	RectFill(&rp, x0 + 2, y0 + 2, x0 + PG_W - 3, y0 + PG_H - 3);
+	/* "Loading  42%", by hand: nothing from libnix's stdio in this process */
+	for (l = g_pg_label; *l && n < 20; ) t[n++] = *l++;
+	t[n++] = ' '; t[n++] = ' ';
+	pct = permille / 10;
+	if (pct > 99) pct = 99;
+	if (pct >= 10) t[n++] = (char)('0' + pct / 10);
+	t[n++] = (char)('0' + pct % 10);
+	t[n++] = '%';
+	SetAPen(&rp, white);
+	Move(&rp, x0 + 10, y0 + (PG_H - rp.TxHeight) / 2 + rp.TxBaseline);
+	Text(&rp, t, n);
+	/* the spinner: eight dots, one bright, turning */
+	cx = x0 + PG_W - 18;
+	cy = y0 + PG_H / 2;
+	for (i = 0; i < 8; i++) {
+		int x = cx + dots[i][0], y = cy + dots[i][1];
+		SetAPen(&rp, ((i - phase) & 7) == 0 ? white : grey);
+		RectFill(&rp, x - 1, y - 1, x + 1, y + 1);
+	}
+}
+
+static void pg_main(void)
+{
+	int shown = 0, phase = 0, ticks = 0;
+	while (!g_pg_quit) {
+		Delay(5);                      /* 0.1 s */
+		if (g_pg_quit) break;
+		if (g_pg_target > shown) shown = g_pg_target;
+		if (shown < g_pg_cap - 1) shown += (g_pg_cap - shown) / 25 + ((g_pg_cap - shown) > 1);
+		if (shown > g_pg_cap - 1) shown = g_pg_cap - 1;
+		if (shown < g_pg_target) shown = g_pg_target;
+		phase = (phase + 1) & 7;
+		/* nothing for the first 0.3 s: a quick save shows no box at all */
+		if (++ticks < 3) continue;
+		ObtainSemaphore(&g_pg_sem);
+		if (!g_pg_quit) {
+			if (g_art_ok) pg_draw_art(shown, phase);
+			else pg_draw(shown, phase);
+		}
+		ReleaseSemaphore(&g_pg_sem);
+	}
+	Forbid();                          /* stay alive until torn down */
+	g_pg_running = 0;
+}
+
+void amigagfx_progress_begin(const char *label)
+{
+	int i;
+	pg_sem_init();
+	if (g_pg_started) return;
+	for (i = 0; label[i] && i < (int)sizeof g_pg_label - 1; i++) g_pg_label[i] = label[i];
+	g_pg_label[i] = 0;
+	g_pg_target = 0;
+	g_pg_cap = 1000;
+	g_pg_quit = 0;
+	g_pg_running = 1;   /* until it has run and gone: end() waits for it */
+	if (!CreateNewProcTags(NP_Entry, (ULONG)pg_main,
+	                       NP_Name, (ULONG)"AmiXcom progress",
+	                       NP_Priority, 1UL,
+	                       NP_StackSize, 8192UL,
+	                       NP_Output, 0UL, NP_Input, 0UL,
+	                       TAG_END)) {
+		g_pg_running = 0;
+		return;
+	}
+	g_pg_started = 1;
+}
+
+/* the figure now (per mille) and the ceiling it may creep to until the next report */
+void amigagfx_progress_set(int permille, int cap)
+{
+	if (permille < 0) permille = 0;
+	if (cap > 1000) cap = 1000;
+	if (cap < permille) cap = permille;
+	g_pg_cap = cap;
+	if (permille > g_pg_target) g_pg_target = permille;
+}
+
+void amigagfx_progress_end(void)
+{
+	int i;
+	if (!g_pg_started) return;
+	g_pg_quit = 1;
+	for (i = 0; i < 100 && g_pg_running; i++) Delay(1);
+	/* its last draw may still be under way: the lock is free once it is done */
+	ObtainSemaphore(&g_pg_sem);
+	ReleaseSemaphore(&g_pg_sem);
+	for (i = 0; i < 100 && g_pg_running; i++) Delay(1);
+	g_pg_started = 0;
+	g_art_ok = 0;   /* each box brings its own picture */
+}
+
+int amigagfx_open(int w, int h, int show_bar, int backend)
+{
+	int r;
+	pg_sem_init();
+	ObtainSemaphore(&g_pg_sem);
+	r = amigagfx_open_(w, h, show_bar, backend);
+	ReleaseSemaphore(&g_pg_sem);
+	return r;
+}
+
+void amigagfx_close(void)
+{
+	pg_sem_init();
+	ObtainSemaphore(&g_pg_sem);
+	amigagfx_close_();
+	ReleaseSemaphore(&g_pg_sem);
 }

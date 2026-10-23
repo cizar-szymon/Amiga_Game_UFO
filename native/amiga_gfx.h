@@ -174,6 +174,20 @@ void amigagfx_pointer_suspend(int on);
 
 void amigagfx_close(void);
 
+/* Progress box for long saves and loads (see amiga_gfx.c): a small process
+ * draws "label NN%" and a spinner in the middle of the game screen until
+ * end(). set() gives the figure now and the ceiling it may creep to, both
+ * per mille. The caller redraws the whole screen after end(). */
+void amigagfx_progress_begin(const char *label);
+void amigagfx_progress_set(int permille, int cap);
+void amigagfx_progress_end(void);
+/* The box's picture in the game's style (before begin()): w x h pixels in
+ * the palette rgb (256 x RGB), 11 glyphs "0123456789%" of gh rows x 8,
+ * their widths, and the palette entries of the bright and dim spinner dots. */
+void amigagfx_progress_art(const unsigned char *img, int w, int h, const unsigned char *rgb,
+                           const unsigned char *glyphs, const unsigned char *widths, int gh,
+                           int bright, int dim);
+
 /* Hide (1) or restore (0) the Intuition pointer over our window. Safe to call
  * before the window exists; it is re-applied when one opens. */
 void amigagfx_set_hide_system_pointer(int on);
