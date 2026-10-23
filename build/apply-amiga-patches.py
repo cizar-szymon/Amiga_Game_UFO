@@ -9741,10 +9741,10 @@ def main():
         os.path.join(src, "..", "bin", "common", "Language", "en-US.yml"),
         "  STR_AMIGA_SPLIT_WALK: \"SPLIT MOVEMENT CALCULATION\"\n",
         "  STR_AMIGA_MUSIC: \"MUSIC\"\n"
-        "  STR_AMIGA_MUSIC_DESC: \"Off, mixed while you play, or rendered once to disk at first start. Live mixing costs CPU (roughly a quarter of an 030/50, little on 040/060); pre-rendered costs almost none but needs about 40 MB of disk and a few minutes once.\"\n"
+        "  STR_AMIGA_MUSIC_DESC: \"Amiga plays the tunes of the Amiga UFO from your own game disks (the .mus files and UFO.bank in data/UFO_AMIGA): four voices, little CPU; where those disks have no tune (battles, the intro) it stays quiet. PC game plays the DOS tunes, rendered once to disk at first start (about 40 MB and a few minutes once).\"\n"
         "  STR_AMIGA_MUSIC_OFF: \"Off\"\n"
-        "  STR_AMIGA_MUSIC_LIVE: \"Mixed live\"\n"
-        "  STR_AMIGA_MUSIC_PRE: \"Pre-rendered\"\n"
+        "  STR_AMIGA_MUSIC_LIVE: \"Amiga\"\n"
+        "  STR_AMIGA_MUSIC_PRE: \"PC game\"\n"
         "  STR_AMIGA_MUSIC_QUALITY: \"MUSIC QUALITY\"\n"
         "  STR_AMIGA_MUSIC_QUALITY_DESC: \"High interpolates between sample points: cleaner treble, about twice the mixing cost. The default follows your processor (High on 040/060, Low on 020/030). Ignored when music is pre-rendered, which always renders at high quality.\"\n"
         "  STR_AMIGA_QUALITY_LOW: \"22 kHz plain\"\n"
@@ -11908,6 +11908,113 @@ def main():
         '#include "AmigaProgressState.h"\n'
         '#endif\n',
         "progress save includes")))
+
+    # 6amU. MUSIC: Off / Amiga / PC game. "Mixed live" (the GM.CAT tunes
+    #       mixed while playing) is gone - it cost CPU the pre-rendered
+    #       stream does not. Amiga plays the Amiga UFO's own tunes from the
+    #       player's disks (data/UFO_AMIGA: Geo.mus ... and UFO.bank) through
+    #       native/amiga_ufomus.c: four emulated Paula voices mixed into the
+    #       same music stream, a few percent of an 060. The value 1 keeps
+    #       its slot, so a saved "Mixed live" becomes Amiga.
+    results.append(("Music.cpp (Amiga UFO tunes: helper)", edit(
+        os.path.join(src, "Engine", "Music.cpp"),
+        "static bool amigaMusicBankTried_ = false;\n",
+        "/* 6amU: the Amiga UFO's tune for a GM.CAT position, from data/UFO_AMIGA */\n"
+        "static void amigaPlayUfoTune_(int track, int loop)\n"
+        "{\n"
+        "\tstatic bool bankTried_ = false;\n"
+        "\tconst char *name_ = UfoMus_FileFor(track);\n"
+        "\tAmigaAudio_MusicStop();\n"
+        "\tUfoMus_Stop();\n"
+        "\tif (name_ == 0) return;   /* the Amiga release has no tune here */\n"
+        "\tif (!UfoMus_HaveBank())\n"
+        "\t{\n"
+        "\t\tif (bankTried_) return;\n"
+        "\t\tbankTried_ = true;\n"
+        "\t\tstd::string b_ = OpenXcom::CrossPlatform::searchDataFile(\"UFO_AMIGA/UFO.bank\");\n"
+        "\t\tif (!UfoMus_LoadBank(b_.c_str()))\n"
+        "\t\t{\n"
+        "\t\t\tSDLmini_Log((\"ufomus: no instrument bank at \" + b_).c_str());\n"
+        "\t\t\treturn;\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\tstd::string p_ = OpenXcom::CrossPlatform::searchDataFile(std::string(\"UFO_AMIGA/\") + name_);\n"
+        "\tFILE *f_ = fopen(p_.c_str(), \"rb\");\n"
+        "\tif (f_ == 0) { SDLmini_Log((\"ufomus: no tune \" + p_).c_str()); return; }\n"
+        "\tstd::vector<unsigned char> d_;\n"
+        "\tunsigned char buf_[4096];\n"
+        "\tsize_t n_;\n"
+        "\twhile ((n_ = fread(buf_, 1, sizeof buf_, f_)) > 0) d_.insert(d_.end(), buf_, buf_ + n_);\n"
+        "\tfclose(f_);\n"
+        "\tUfoMus_SetVolume(64);   /* Paula's own volume carries the setting */\n"
+        "\tif (!d_.empty() && UfoMus_Play(&d_[0], (unsigned long)d_.size(), loop != 0))\n"
+        "\t\tAmigaAudio_MusicStart(AMIGA_MUSIC_PERIOD, AMIGA_MUSIC_CHUNK, UfoMus_Refill, 0);\n"
+        "\telse\n"
+        "\t\tSDLmini_Log((\"ufomus: cannot play \" + p_).c_str());\n"
+        "}\n"
+        "\n"
+        "static bool amigaMusicBankTried_ = false;\n",
+        "amiga ufo tune helper")))
+    results.append(("Music.cpp (Amiga UFO tunes: play)", edit(
+        os.path.join(src, "Engine", "Music.cpp"),
+        "\tif (!_amigaData.empty() && !Options::mute && Options::amigaMusic == 1)\n"
+        "\t{\n"
+        "\t\tif (amigaMusicBank_())\n",
+        "\tif (!_amigaData.empty() && !Options::mute && Options::amigaMusic == 1)\n"
+        "\t{\n"
+        "\t\tamigaPlayUfoTune_(_amigaTrack, loop);   /* 6amU */\n"
+        "\t\treturn;\n"
+        "\t}\n"
+        "\tif (false)\n"
+        "\t{\n"
+        "\t\tif (amigaMusicBank_())\n",
+        "amiga ufo tune play")))
+    results.append(("Music.cpp (Amiga UFO tunes: stop)", edit(
+        os.path.join(src, "Engine", "Music.cpp"),
+        "\tAmigaAudio_MusicStop();\n"
+        "\tAmigaMusic_Stop();\n"
+        "\treturn;\n",
+        "\tAmigaAudio_MusicStop();\n"
+        "\tAmigaMusic_Stop();\n"
+        "\tUfoMus_Stop();\n"
+        "\treturn;\n",
+        "amiga ufo tune stop")))
+    results.append(("Music.cpp (Amiga UFO tunes: include)", edit(
+        os.path.join(src, "Engine", "Music.cpp"),
+        "#include \"amiga_music.h\"\n"
+        "void SDLmini_Log(const char *msg);\n",
+        "#include <stdio.h>\n"
+        "#include \"amiga_music.h\"\n"
+        "#include \"amiga_ufomus.h\"\n"
+        "void SDLmini_Log(const char *msg);\n",
+        "amiga ufo tune include")))
+    # With Amiga music the PC tunes still play where the Amiga disks have
+    # none (the battles, the intro): those come from the pre-rendered PC
+    # stream, so it is made at startup for Amiga music too.
+    results.append(("Music.cpp (Amiga UFO tunes: PC where the Amiga has none)", edit(
+        os.path.join(src, "Engine", "Music.cpp"),
+        "\t\tamigaPlayUfoTune_(_amigaTrack, loop);   /* 6amU */\n"
+        "\t\treturn;\n",
+        "\t\tif (UfoMus_FileFor(_amigaTrack) != 0 || _amigaPath.empty())\n"
+        "\t\t{\n"
+        "\t\t\tamigaPlayUfoTune_(_amigaTrack, loop);   /* 6amU */\n"
+        "\t\t\treturn;\n"
+        "\t\t}\n"
+        "\t\tAmigaAudio_MusicStop();\n"
+        "\t\tUfoMus_Stop();\n"
+        "\t\tif (AmigaMusic_PlayFile(_amigaPath.c_str(), loop != 0))\n"
+        "\t\t\tAmigaAudio_MusicStart(AMIGA_MUSIC_PERIOD, AMIGA_MUSIC_CHUNK, AmigaMusic_Refill, 0);\n"
+        "\t\treturn;\n",
+        "amiga ufo tune pc fallback")))
+    results.append(("StartState.cpp (prerender for Amiga music too)", edit(
+        os.path.join(src, "Menu", "StartState.cpp"),
+        "\t\tif (Options::amigaMusic == 2)\n"
+        "\t\t{\n"
+        "\t\t\t_game->getMod()->amigaPrerenderMusic();\n",
+        "\t\tif (Options::amigaMusic >= 1)   /* Amiga music falls back on it (6amU) */\n"
+        "\t\t{\n"
+        "\t\t\t_game->getMod()->amigaPrerenderMusic();\n",
+        "prerender for amiga music")))
 
 
     for root, _dirs, files in os.walk(src):

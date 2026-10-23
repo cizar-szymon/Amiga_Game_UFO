@@ -77,10 +77,12 @@ static const char *amigaRowDesc_[AMIGA_ROW_COUNT] =
 /* how many values each row cycles through */
 static const int amigaRowVals_[AMIGA_ROW_COUNT] = { 2, 2, 3, 2, 2, 3, 2, 2, 3, 2, 2 };
 
-/* pre-rendered music always renders at high quality: the switch is dead */
+/* Nothing is mixed live any more (the PC tunes are pre-rendered, which
+ * always renders at high quality, and the Amiga tunes are four voices): the
+ * quality switch is dead. The source only chooses among the PC tunes. */
 static bool amigaRowDisabled_(size_t row)
 {
-	return row == AMIGA_ROW_MUSICQ && Options::amigaMusic == 2;
+	return row == AMIGA_ROW_MUSICQ || (row == AMIGA_ROW_MUSICSRC && Options::amigaMusic != 2);
 }
 
 static int amigaRowGet_(size_t row)
@@ -221,7 +223,8 @@ void OptionsAmigaState::lstOptionsClick(Action *action)
 	updateRow(row);
 	if (row == AMIGA_ROW_MUSIC)
 	{
-		updateRow(AMIGA_ROW_MUSICQ);   /* greys out for pre-rendered music */
+		updateRow(AMIGA_ROW_MUSICQ);
+		updateRow(AMIGA_ROW_MUSICSRC);   /* greys out unless the PC tunes play */
 	}
 }
 
