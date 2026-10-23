@@ -130,6 +130,7 @@ if [ -n "$YAML_TGZ" ] && [ -d "$YAML" ]; then
 	         include/yaml-cpp/node/detail/memory.h \
 	         include/yaml-cpp/node/detail/node.h \
 	         include/yaml-cpp/node/detail/node_ref.h \
+	         include/yaml-cpp/node/detail/impl.h \
 	         src/parse.cpp src/memory.cpp src/stream.cpp; do
 		tar xzf "$YAML_TGZ" -C "$WORK" "$YAML_TOP/$f" 2>/dev/null \
 			&& cp "$WORK/$YAML_TOP/$f" "$YAML/$f"

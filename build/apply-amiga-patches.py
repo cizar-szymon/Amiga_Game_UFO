@@ -1638,6 +1638,43 @@ def patch_walk_probes(src):
     return "%d probes" % n
 
 
+def patch_yamlcpp_fastkey(yamldir):
+    """Map lookups compare every key already in the map with the one asked
+    for, and each comparison decoded the stored key into a fresh string
+    through a temporary Node (shared_ptr copies, a string copy). Building a
+    map is quadratic in those: a Geoscape autosave of 18 KB spent 8.5 s in
+    it on a Warp 060 (bases 5.1 s, alien strategy 2.1 s, 2026-10-23). For a
+    string key the decode is "a scalar's text, else no match", so compare
+    the scalar directly - the same answer without the copies."""
+    path = os.path.join(yamldir, "include", "yaml-cpp", "node", "detail", "impl.h")
+    if not os.path.isfile(path):
+        return "skipped (no yaml-cpp at %s)" % yamldir
+    with open(path, "r", encoding="utf-8", errors="surrogateescape") as f:
+        text = f.read()
+    if "AMIGA-PORT fast key" in text:
+        return "already"
+    old = ("inline bool node::equals(const char* rhs, shared_memory_holder pMemory) {\n"
+           "  return equals<std::string>(rhs, pMemory);\n"
+           "}\n")
+    new = ("// AMIGA-PORT fast key: a string key matches a scalar with that text, as\n"
+           "// convert<std::string>::decode would decide, without building a Node and\n"
+           "// a string copy for every key compared.\n"
+           "template <>\n"
+           "inline bool node::equals<std::string>(const std::string& rhs, shared_memory_holder) {\n"
+           "  return type() == NodeType::Scalar && scalar() == rhs;\n"
+           "}\n"
+           "\n"
+           "inline bool node::equals(const char* rhs, shared_memory_holder) {\n"
+           "  return type() == NodeType::Scalar && scalar() == rhs;\n"
+           "}\n")
+    if old not in text:
+        raise SystemExit("PATCH FAILED: node::equals(const char*) not found in %s" % path)
+    text = text.replace(old, new, 1)
+    with open(path, "w", encoding="utf-8", errors="surrogateescape") as f:
+        f.write(text)
+    return "applied"
+
+
 def main():
     if len(sys.argv) not in (2, 3):
         raise SystemExit(__doc__)
@@ -1649,6 +1686,7 @@ def main():
         print("  %-24s %s" % ("yaml-cpp ICE dodge", patch_yamlcpp_ice(sys.argv[2])))
         print("  %-24s %s" % ("yaml-cpp tick hook", patch_yamlcpp_tick(sys.argv[2])))
         print("  %-24s %s" % ("yaml-cpp nodealloc", patch_yamlcpp_nodealloc(sys.argv[2])))
+        print("  %-24s %s" % ("yaml-cpp fast key", patch_yamlcpp_fastkey(sys.argv[2])))
     if not os.path.isdir(os.path.join(src, "Engine")):
         raise SystemExit("not an OpenXcom src directory: %s" % src)
 
