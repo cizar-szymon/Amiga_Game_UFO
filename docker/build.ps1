@@ -4,7 +4,7 @@
 #   .\build.ps1 -Fpu       # the -fpu variants (AMIGA_NO_PATCH=1 is set too: see LEFTOFF.md)
 #   .\build.ps1 -Clean     # re-unpack upstream first
 #   .\build.ps1 -Tune060   # -mtune=68060 variant (binaries *-t060, AMIGA_NO_PATCH=1)
-param([switch]$Fpu, [switch]$Clean, [switch]$NoPatch, [switch]$Rebuild, [switch]$Tune060, [switch]$HeapGuard)
+param([switch]$Fpu, [switch]$Clean, [switch]$NoPatch, [switch]$Rebuild, [switch]$Tune060, [switch]$HeapGuard, [switch]$FastMalloc)
 
 # Not 'Stop': PowerShell 5.1 turns docker's progress output on stderr into a
 # terminating error. Native exit codes are checked by hand instead.
@@ -37,6 +37,7 @@ if ($Fpu)               { $envArgs += @('-e', 'AMIGA_FPU=1', '-e', 'AMIGA_NO_PAT
 elseif ($NoPatch)       { $envArgs += @('-e', 'AMIGA_NO_PATCH=1') }
 if ($Tune060)           { $envArgs += @('-e', 'AMIGA_TUNE060=1'); if (-not $Fpu -and -not $NoPatch) { $envArgs += @('-e', 'AMIGA_NO_PATCH=1') } }
 if ($HeapGuard)         { $envArgs += @('-e', 'AMIGA_HEAPGUARD=1'); if (-not $Fpu -and -not $NoPatch) { $envArgs += @('-e', 'AMIGA_NO_PATCH=1') } }
+if ($FastMalloc)        { $envArgs += @('-e', 'AMIGA_FASTMALLOC=1'); if (-not $Fpu -and -not $NoPatch -and -not $HeapGuard) { $envArgs += @('-e', 'AMIGA_NO_PATCH=1') } }
 $shArgs = @('/mnt/i/GITHUB/Amiga_OpenXCOM/build/build.sh')
 if ($Clean) { $shArgs += 'clean' }
 
