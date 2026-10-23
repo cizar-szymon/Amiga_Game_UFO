@@ -163,6 +163,37 @@ ax.set_xlabel("ms"); ax.set_xlim(0, 24); ax.legend(fontsize=8, loc="upper right"
 ax.set_title("Obraz na kartę RTG – wybrane koszty")
 img_parts = save(fig, "parts.png")
 
+# 13. Geoscape przy 1 DAY (7e63f91, wariant FPU)
+fig, ax = plt.subplots(figsize=(7.2, 3.0))
+kinds = ["spokojny dzień\n(statki w bazie)", "statek w locie", "UFO w powietrzu\n(środki zakresów)"]
+vals = [("przed (sonda w każdym kroku)", [2.61, 5.46, 2.95], C_BEFORE),
+        ("bez sondy (7e63f91)", [0.30, 2.97, 1.80], C_MID),
+        ("bez sondy + wariant FPU", [0.32, 0.85, 0.62], C_AFTER)]
+for k, (name, v, col) in enumerate(vals):
+    bars = ax.bar([i + (k - 1) * 0.27 for i in range(3)], v, 0.27, label=name, color=col)
+    label_bars(ax, bars, "{:.2f}")
+ax.set_xticks(range(3)); ax.set_xticklabels(kinds, fontsize=8)
+ax.set_ylabel("s na jeden dzień gry"); ax.set_ylim(0, 6.4)
+ax.axhline(1, color="#555", lw=0.6, ls="--"); ax.text(2.45, 1.08, "cel: 1 s", fontsize=7, ha="right", color="#555")
+ax.legend(fontsize=8, loc="upper right")
+ax.set_title("Geoscape, prędkość 1 DAY – czas jednego dnia gry (Terror1, A4000 / Warp4070)")
+img_day = save(fig, "day.png")
+
+# 14. Zapis i wczytywanie – szybki alokator (b61e009)
+fig, ax = plt.subplots(figsize=(7.2, 2.6))
+items = ["budowanie autozapisu\nGeoscape (18 KB)", "rozbiór zapisu Terror1\nprzy wczytaniu", "start gry do wczytania\nzapisu (amigaAutoLoad)"]
+bms, ams = [8.3, 4.88, 47.0], [0.14, 0.62, 30.5]
+ys = range(len(items))
+ax.barh([i + 0.2 for i in ys], bms, 0.4, color=C_BEFORE, label="alokator libnix")
+ax.barh([i - 0.2 for i in ys], ams, 0.4, color=C_AFTER, label="szybki alokator")
+for i, (b, a) in enumerate(zip(bms, ams)):
+    ax.text(b + 0.5, i + 0.2, "%g s" % b, va="center", fontsize=8)
+    ax.text(a + 0.5, i - 0.2, "%g s" % a, va="center", fontsize=8)
+ax.set_yticks(list(ys)); ax.set_yticklabels(items, fontsize=8); ax.invert_yaxis()
+ax.set_xlabel("s"); ax.set_xlim(0, 56); ax.legend(fontsize=8, loc="lower right")
+ax.set_title("Wariant FPU, A4000 / Warp4070")
+img_save = save(fig, "save.png")
+
 # ---- dokument
 ss = {
     "h1": ParagraphStyle("h1", fontName="Arial-Bold", fontSize=17, leading=21, spaceAfter=4),
@@ -244,6 +275,26 @@ story.append(table([
      "F12 zamykał grę → 2 zrzuty po 65 KB, gra działa dalej", "A1200 / Warp1260"],
     ["7f17e89", "23.10", "Niewidoczny przełącznik ekranów w lewym górnym rogu (był w prawym)",
      "Sprawdzone przez gracza", "A1200 / Warp1260"],
+    ["dc315a7", "23.10", "Pozycja „WARP RTG 320x200 / 640x480”: Geoscape 320×200, bitwa natywnie 640×480; nazwa i stałe skale jak przy 640×400",
+     "Bitwa po wczytaniu misja4 w 640×480 (wcześniej 320×200)", "A4000 / Warp4070"],
+    ["37a1766", "23.10", "W trybach WARP ekrany informacyjne (wyposażenie, apteczka, minimapa, skaner, dane żołnierza) zawsze 320×200",
+     "Wyposażenie przed misją w 320×200 bez względu na opcję", "A4000 / Warp4070"],
+    ["87a3261", "23.10", "Przełącznik ekranów z powrotem w prawym górnym rogu, ale tylko 2×2 piksele",
+     "Przycisk gry w rogu nie chowa już ekranu", "A4000 / Warp4070"],
+    ["b1d56c6", "23.10", "F10 – zgłoszenie błędu (zrzut z karty, opis stanu, zapis gry); Help – zrzut ekranu; pełna klatka po zamknięciu okna",
+     "Okienka komunikatów (panika, „saving game”) nie zostają na ekranie", "A4000 / Warp4070"],
+    ["25cecad", "23.10", "Okienko postępu przy zapisie i wczytywaniu (w stylu okna Options, procent, kręcąca się kropka)",
+     "Wczytanie bitwy ~16 s już nie wygląda jak zawieszenie", "A4000 / Warp4070"],
+    ["9fa7316", "23.10", "Muzyka: Off / Amiga / PC game – utwory z wersji Amiga (własny odtwarzacz .mus); „Mixed live” usunięte",
+     "9 utworów z dysków Amigi; w bitwie i intrze muzyka PC", "A4000 / Warp4070"],
+    ["5b66488", "23.10", "Efekty dźwiękowe: PC game / Amiga – pliki 8SVX z wersji Amiga zamiast dźwięków PC",
+     "67 z 69 numerów dźwięków ma odpowiednik z Amigi", "A4000 / Warp4070"],
+    ["7e63f91", "23.10", "Geoscape: bez odczytu zegara w każdym 5-sekundowym kroku; sondy dnia gry i budowania zapisu",
+     "1 DAY, spokojny dzień 2,6 → 0,3 s; z wariantem FPU każdy dzień poniżej 0,9 s", "A4000 / Warp4070"],
+    ["c891a74", "23.10", "yaml-cpp: klucz tekstowy porównywany wprost ze skalarem",
+     "Bez mierzalnego zysku (8,5 → 8,3 s); zostaje, bo wynik ten sam", "A4000 / Warp4070"],
+    ["b61e009", "23.10", "Szybki alokator pamięci (klasy rozmiarów) zamiast puli libnix; zwalnia pamięć przy wyjściu",
+     "Budowanie autozapisu 8,3 → 0,14 s; rozbiór zapisu 4,9 → 0,6 s; start ~17 s krótszy", "A4000 / Warp4070"],
 ], [17, 11, 62, 60, 30]))
 story.append(Spacer(1, 6))
 story.append(img(img_battle, 175))
@@ -362,7 +413,9 @@ story.append(KeepTogether([P("<b>Sprzętowy FPU 68060 (wariant -fpu) – zmierzo
     ], [80, 50, 50]),
     P("Średnie w granicach rozrzutu; jedyna wyraźna różnica na niekorzyść FPU. Prawdopodobnie libnix nie ma wersji dla 68881 "
       "i funkcje zwracające liczby zmiennoprzecinkowe idą drogą programową (komentarz w build.sh) – niesprawdzone. "
-      "Główna wersja zostaje bez FPU.", "small")]))
+      "<b>Aktualizacja 23.10:</b> w Geoscape przy 1 DAY wariant FPU jest wyraźnie szybszy – ruch statków i UFO po kuli to "
+      "trygonometria na liczbach double (rozdział 12). Pod ikoną UFO na Amidze 2 jest teraz wariant FPU z szybkim alokatorem.",
+      "small")]))
 
 story.append(Spacer(1, 8))
 story.append(KeepTogether([P("7. Geoscape – globus (8eed426, 8ff2ed4, d812c75)", "h2"), img(img_geo, 178)]))
@@ -420,10 +473,20 @@ story.append(table([
      "z paletą gra dalej padała w kompresji lodepng (prawdopodobnie funkcja porównująca dla qsort, która nigdy nie zwraca 0). "
      "Zapis bez kompresji, każdy krok w logu",
      "menu główne, F12 dwa razy: 2 pliki po 65 048 bajtów, poprawne kolory, gra działa dalej"],
+    ["dc315a7", "Pozycja WARP 640×480: bitwa po wczytaniu zapisu w 320×200",
+     "Skala „Full Display” bierze rozmiar bieżącego ekranu, a Geoscape otwiera ekran 320×200 i wpisuje ten rozmiar do opcji; w trybie natywnym ta skala oznacza teraz 640×480",
+     "misja4 wczytana przez gracza: bitwa w 640×480"],
+    ["b1d56c6", "Okienko komunikatu (panika, „saving game”) zostawało na ekranie po zamknięciu, znacznik żołnierza rysowany na nim",
+     "Raport F10 (bug000): okienka nie było już w grze, a karta dalej je pokazywała – kolejne klatki uznane za niezmienione; "
+     "po zamknięciu każdego okna następna klatka jest teraz składana i wysyłana w całości",
+     "zrzut z karty + opis stanu gry z F10"],
+    ["b61e009", "Szybki alokator (wersja próbna, przed commitem) nie oddawał pamięci przy wyjściu: ~20 MB Fast RAM na każde uruchomienie",
+     "libnix woła funkcje startu i końca alokatora tylko z listy, do której wpisywał je jego własny malloc.o; teraz rejestracja ADD2INIT/ADD2EXIT",
+     "wolny Fast RAM przed i po uruchomieniu: 200,5 MB = 200,5 MB (stara wersja: −23 MB)"],
 ], [17, 45, 78, 40]))
 
 story.append(Spacer(1, 8))
-story.append(KeepTogether([P("10. Opcje i menu (63c93e0, 541852d, 0a7b71d, a722fa9, 2efed5b)", "h2"),
+story.append(KeepTogether([P("10. Opcje i menu (63c93e0, 541852d, 0a7b71d, a722fa9, 2efed5b, 23.10: dc315a7 … b1d56c6)", "h2"),
     table([
         ["Commit", "Zmiana", "Po co"],
         ["0a7b71d", "Domyślne: amigaAppBar false, amigaNativeScale true, battlescapeScale 2, maximizeInfoScreens true; "
@@ -435,8 +498,15 @@ story.append(KeepTogether([P("10. Opcje i menu (63c93e0, 541852d, 0a7b71d, a722f
          "HQx/xBRZ przełączają na ekran 32-bit, którego warstwa obrazu portu nie pokazuje; „Scale” nic tu nie robi"],
         ["63c93e0, 541852d", "Menu: „AmiXcom” / „Version RTG &lt;numer&gt;”; $VER: AmiXcom &lt;numer&gt; (&lt;data&gt;)",
          "Gracz i polecenie Version widzą, która to wersja"],
-        ["7f17e89", "Ekran bez paska tytułu: kliknięcie w lewy górny róg (16×10 pikseli) przenosi ekran gry za Workbench",
-         "Na życzenie gracza (wcześniej prawy górny róg)"],
+        ["7f17e89, 87a3261", "Ekran bez paska tytułu: kliknięcie w prawy górny róg, tylko 2×2 piksele, przenosi ekran gry za Workbench",
+         "Na życzenie gracza: lewy róg 16×10 (7f17e89), potem prawy 2×2, bo przycisk gry w rogu chował ekran"],
+        ["dc315a7, 37a1766", "Display Resolution: „WARP RTG 320x200 / 640x400” i „WARP RTG 320x200 / 640x480”; skale zablokowane; "
+                             "ekrany informacyjne 320×200",
+         "Dwa tryby z natywną bitwą, wybierane w menu"],
+        ["9fa7316, 5b66488", "Options → Amiga: MUSIC Off / Amiga / PC game; SOUND EFFECTS PC game / Amiga; „Music quality” wyszarzone",
+         "Muzyka i efekty z oryginalnej wersji Amiga z dysków gracza (data/UFO_AMIGA)"],
+        ["b1d56c6", "F10 – zgłoszenie błędu (bugNNN.png/.txt/.sav w user/xcom1), Help – zrzut ekranu",
+         "Klawiatura Amigi nie ma F12; jeden klawisz zapisuje wszystko do diagnozy"],
     ], [30, 75, 75])]))
 
 story.append(Spacer(1, 8))
@@ -454,7 +524,67 @@ story.append(KeepTogether([P("11. Testy opcji na prawdziwych Amigach (22.10)", "
     P("F12 (zrzut ekranu) zamykał grę bez śladu – naprawione w 89178e2 (rozdział 9). Wysyłka przez AmiAgenta raz uszkodziła "
       "60 bajtów binarki; każdy wgrany plik jest teraz sprawdzany sumą SHA-256.", "small")]))
 
-story.append(P("12. Jak mierzono i sprawdzano", "h2"))
+story.append(PageBreak())
+story.append(P("12. Geoscape przy prędkości 1 DAY (7e63f91, wariant FPU)", "h2"))
+story.append(P("Przy 1 DAY gra w jednej klatce przelicza cały dzień: 17 280 kroków po 5 sekund czasu gry (ruch statków i UFO, "
+               "wykrywanie, paliwo), a ekran odświeża raz po całym dniu. Zapis <i>Terror1</i>, 1 DAY przez 60–90 s, sonda "
+               "<i>geoday</i> (jedna linia na dzień, odczyt E-clocka)."))
+story.append(img(img_day, 175))
+story.append(table([
+    ["Dzień gry przy 1 DAY", "przed", "bez sondy (7e63f91)", "+ wariant FPU"],
+    ["spokojny (statki w bazie)", "2,60–2,62 s", "0,30 s", "0,32 s"],
+    ["statek w locie (Skyranger wraca do bazy)", "5,46 s", "2,97 s", "0,85 s"],
+    ["UFO w powietrzu", "1,88–4,02 s", "1,48–2,11 s", "0,45–0,79 s"],
+    ["wyświetlenie czasu i globus (po dniu)", "–", "3–85 ms", "2–71 ms"],
+], [64, 36, 40, 40]))
+story.append(Spacer(1, 4))
+story.append(P("<b>Przyczyna 1:</b> sonda z wersji 0.9 mierzyła każdy krok <i>time5Seconds</i> dwoma wywołaniami "
+               "<i>SDL_GetTicks()</i>. Zmierzony koszt jednego wywołania: 57 µs, z czego 47 µs to <i>DateStamp</i> z dos.library, "
+               "a reszta obsługa strumienia muzyki. Przy 17 280 krokach było to więcej niż cała logika gry. Sonda działa teraz "
+               "tylko z <i>amigaPerfLog 2</i>. <b>Przyczyna 2:</b> ruch po kuli ziemskiej to trygonometria na liczbach double – "
+               "wariant FPU liczy ją sprzętowo. Szczegółowe sondy (<i>amigaPerfLog 2</i>) same kosztują ~10 µs na odczyt E-clocka, "
+               "dlatego czasy w tabeli są mierzone tylko na granicach dnia."))
+story.append(P("Pomiary szczegółowe (z kosztem sond) wskazały resztę logiki: pętla UFO ~100 µs na krok, gdy UFO leci; trzy statki "
+               "w bazie ~25 µs; procedury co 10 min, 30 min, godzinę i dzień razem ~10 ms na dzień (co 30 min 0,18 s, gdy leci UFO).",
+               "small"))
+
+story.append(Spacer(1, 8))
+story.append(KeepTogether([P("13. Zapis i wczytywanie – szybki alokator pamięci (b61e009)", "h2"),
+    P("Autozapis Geoscape (plik 18 KB) budował się 8,5 s. Sonda podzieliła czas: bazy 5,1 s, strategia obcych 2,1 s, "
+      "kraje 0,6 s (37 ms na kraj z kilkoma listami po 12 liczb). Szybsze porównywanie kluczy w yaml-cpp (c891a74) nie dało nic "
+      "(8,3 s) – czas szedł na alokacje: alokator libnix przeszukuje pulę metodą pierwszego pasującego bloku, a na stercie gry są "
+      "setki tysięcy bloków. Alokator z 64 klasami rozmiarów i własnymi listami wolnych bloków robi z alokacji jedną operację na liście."),
+    img(img_save, 170),
+    table([
+        ["Wariant FPU, Warp4070", "alokator libnix", "szybki alokator"],
+        ["budowanie autozapisu Geoscape", "8,3 s (bazy 5,1, strategia 1,9)", "0,14 s (bazy 0,08)"],
+        ["rozbiór zapisu Terror1 przy wczytaniu", "4,88 s", "0,62 s"],
+        ["start gry do wczytania zapisu", "~47 s", "~30,5 s"],
+        ["rozmiar zapisanego pliku", "18 316 bajtów", "18 316 bajtów"],
+        ["dzień przy 1 DAY", "0,32–0,84 s", "bez zmian"],
+    ], [64, 58, 58]),
+    P("Na razie budowany flagą <i>-FastMalloc</i> (docker/build.ps1). Pierwsza wersja nie oddawała pamięci przy wyjściu "
+      "(rozdział 9); po poprawce wolny Fast RAM przed i po uruchomieniu gry jest taki sam.", "small")]))
+
+story.append(Spacer(1, 8))
+story.append(KeepTogether([P("14. Nowe funkcje z 23.10 (bez liczb wydajności)", "h2"),
+    table([
+        ["Commit", "Funkcja", "Szczegóły"],
+        ["25cecad", "Okienko postępu przy zapisie i wczytywaniu",
+         "Rysuje je osobny proces Amigi 10 razy na sekundę, więc kręci się także w fazach bez raportów (zwalnianie pamięci, "
+         "zmiana ekranu). Procent: przy wczytywaniu liczba przeczytanych znaków pliku, potem etapy zmierzone na Warp4070. "
+         "Grafikę okienka rysuje gra przed startem operacji; kolory dopasowane do palety w danej chwili (przy wczytywaniu zmienia się dwa razy)."],
+        ["9fa7316", "Muzyka z wersji Amiga",
+         "Odtwarzacz .mus przepisany na C według odtwarzacza „UFO” do EaglePlayera (meynaf i Wanted Team): 16 kanałów na 4 głosach "
+         "Pauli, tablica okresów, obwiednie, 24 tyknięcia na takt, 60 razy na sekundę. 4 głosy miksowane do strumienia muzyki portu."],
+        ["5b66488", "Efekty dźwiękowe z wersji Amiga",
+         "Katalogi PC nie mają nazw – przypisanie po znaczeniu numeru w regułach gry. Korelacja przebiegów (tools/match_amiga_sfx.py) "
+         "potwierdziła tylko nagrania wspólne z PC; kroki po innych podłożach niż metal i beton – przybliżenie."],
+        ["b1d56c6", "F10 i Help",
+         "Opis w rozdziałach 10 i 15; pierwszy raport od razu wskazał błąd okienek komunikatów (rozdział 9)."],
+    ], [17, 45, 118])]))
+
+story.append(P("15. Jak mierzono i sprawdzano", "h2"))
 story.append(P("• Każda zmiana mierzona osobno na prawdziwej Amidze, ta sama scena sterowana skryptem (autoinput), sondy "
                "<i>amigaPerfLog</i> co 100 klatek: logika, mapa, interfejs, wysłanie na kartę."))
 story.append(P("• <b>amigaMapVerify 1</b> – każda klatka z pamięci podręcznej mapy porównywana ze złożoną od zera: "
@@ -463,8 +593,10 @@ story.append(P("• <b>amigaFrameSkip 2</b> – każda klatka z szybkiej ścież
                "zrobionym zwykłą drogą i odczytanym z karty: 0 różnic."))
 story.append(P("• <b>Numer wersji</b> – liczba commitów: w menu głównym „Version RTG &lt;numer&gt;” (63c93e0; wcześniej, "
                "od 9924b7f, pod licznikiem FPS), w poleceniu Version ($VER, 541852d) i z identyfikatorem, np. „build: 68 224dbf4+”, "
-               "w sdlmini.log. Ekran bez paska tytułu (amigaAppBar wyłączone): kliknięcie w lewy górny róg (16×10 pikseli, "
-               "7f17e89; wcześniej prawy) przenosi ekran gry za Workbench."))
+               "w sdlmini.log. Ekran bez paska tytułu (amigaAppBar wyłączone): kliknięcie w prawy górny róg (2×2 piksele, "
+               "87a3261) przenosi ekran gry za Workbench."))
+story.append(P("• <b>F10</b> (b1d56c6) – gracz zgłasza błąd jednym klawiszem: zrzut odczytany z karty (to, co widać), opis "
+               "stanów gry i ostatniej klatki, zapis gry; pliki pobierane przez AmiAgenta."))
 story.append(P("• <b>Testy z graczem</b> (22.10) – błędy, których skrypt nie wywoła (tura obcych z walką, rzuty granatem), "
                "sprawdzane w grze prowadzonej przez użytkownika z <i>amigaMapVerify</i>; log porównuje każdą klatkę."))
 story.append(P("• <b>amigaAutoLoad</b> (35fd59b) – gra wczytuje podany zapis od razu po starcie; test zaczyna się na polu walki "
