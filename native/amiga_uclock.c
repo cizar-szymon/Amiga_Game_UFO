@@ -59,3 +59,16 @@ unsigned long amiga_uclock_freq(void)
 	if (!uclock_open()) return 0;
 	return (unsigned long)s_freq;
 }
+
+/* The E-clock's low word as it is: no 64-bit arithmetic, for probes called
+ * tens of thousands of times a second (amiga_uclock_us does a 64-bit multiply
+ * and divide through libgcc each call, which is what such probes would then
+ * mostly measure). Differences are right modulo 2^32; amiga_uclock_freq()
+ * converts them. */
+unsigned long amiga_uclock_raw(void)
+{
+	struct EClockVal ev;
+	if (!uclock_open()) return 0;
+	ReadEClock(&ev);
+	return (unsigned long)ev.ev_lo;
+}

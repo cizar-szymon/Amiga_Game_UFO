@@ -11828,6 +11828,54 @@ def main():
         "\tunsigned int svT1_ = SDL_GetTicks();\n"
         "\tamigagfx_progress_set(850, 950);   /* 6prog */\n",
         "progress save emit")))
+    # 6sb. A Geoscape autosave spent 8.6 s in "build" for an 18 KB file
+    #      (Warp4070, Terror1 at the turn of a day, 2026-10-23). The part
+    #      after each section of the save, in ms, as one "save: build
+    #      parts" line (SDL_GetTicks, 20 ms grain - plenty here).
+    results.append(("SavedGame.cpp (save parts: decl)", edit(
+        os.path.join(src, "Savegame", "SavedGame.cpp"),
+        "static int amPgParse_ = 600;\n",
+        "static int amPgParse_ = 600;\n"
+        "/* 6sb: where a save's build time goes */\n"
+        "static char amSb_[400];\n"
+        "static int amSbN_;\n"
+        "static unsigned int amSbT_;\n"
+        "#define AMIGA_SB(tag) do { unsigned int n_ = SDL_GetTicks(); \\\n"
+        "\tif (amSbN_ < (int)sizeof amSb_ - 32) amSbN_ += snprintf(amSb_ + amSbN_, sizeof amSb_ - amSbN_, \"%s %u, \", tag, n_ - amSbT_); \\\n"
+        "\tamSbT_ = n_; } while (0)\n",
+        "save parts decl")))
+    results.append(("SavedGame.cpp (save parts: start)", edit(
+        os.path.join(src, "Savegame", "SavedGame.cpp"),
+        "\tamigagfx_progress_set(0, 850);   /* 6prog */\n",
+        "\tamigagfx_progress_set(0, 850);   /* 6prog */\n"
+        "\tamSbN_ = 0; amSb_[0] = 0; amSbT_ = svT0_;   /* 6sb */\n",
+        "save parts start")))
+    for anchor, tag in (
+            ("\tnode[\"ids\"] = _ids;\n", "header"),
+            ("\t\tnode[\"countries\"].push_back((*i)->save());\n\t}\n", "countries"),
+            ("\t\tnode[\"regions\"].push_back((*i)->save());\n\t}\n", "regions"),
+            ("\t\tnode[\"bases\"].push_back((*i)->save());\n\t}\n", "bases"),
+            ("\t\tnode[\"waypoints\"].push_back((*i)->save());\n\t}\n", "waypoints"),
+            ("\t\tnode[\"missionSites\"].push_back((*i)->save());\n\t}\n", "sites"),
+            ("\t\tnode[\"alienBases\"].push_back((*i)->save());\n\t}\n", "alienBases"),
+            ("\t\tnode[\"alienMissions\"].push_back((*i)->save());\n\t}\n", "missions"),
+            ("\t\tnode[\"ufos\"].push_back((*i)->save(getMonthsPassed() == -1));\n\t}\n", "ufos"),
+            ("\t\tnode[\"discovered\"].push_back((*i)->getName());\n\t}\n", "discovered"),
+            ("\t\tnode[\"poppedResearch\"].push_back((*i)->getName());\n\t}\n", "popped"),
+            ("\tnode[\"alienStrategy\"] = _alienStrategy->save();\n", "strategy"),
+            ("\t\tnode[\"deadSoldiers\"].push_back((*i)->save());\n\t}\n", "dead"),
+            ("\t\t\tnode[\"missionStatistics\"].push_back((*i)->save());\n\t\t}\n\t}\n", "stats")):
+        results.append(("SavedGame.cpp (save parts: %s)" % tag, edit(
+            os.path.join(src, "Savegame", "SavedGame.cpp"),
+            anchor,
+            anchor + "#ifdef __AMIGA__\n\tAMIGA_SB(\"%s\");\n#endif\n" % tag,
+            "save parts %s" % tag)))
+    results.append(("SavedGame.cpp (save parts: log)", edit(
+        os.path.join(src, "Savegame", "SavedGame.cpp"),
+        "\tunsigned int svT1_ = SDL_GetTicks();\n",
+        "\tSDLmini_Log((std::string(\"save: build parts ms: \") + amSb_).c_str());   /* 6sb */\n"
+        "\tunsigned int svT1_ = SDL_GetTicks();\n",
+        "save parts log")))
     results.append(("SavedGame.cpp (progress: save write)", edit(
         os.path.join(src, "Savegame", "SavedGame.cpp"),
         "\tsav << ydump_;\n",
@@ -12233,6 +12281,202 @@ def main():
         "\tSDLmini_Log(\"mods: sounds loaded\");\n",
         "amiga sfx use")))
 
+    # 6geo. Where a Geoscape day goes. At 1 Day a frame advances the clock by
+    #       17280 five-second steps and draws once: 1.9-5.5 s a frame on the
+    #       Warp4070 (Terror1, 2026-10-23), the drawing ~20 ms of it. These
+    #       probes (amigaPerfLog only, microsecond E-clock) split the logic:
+    #       the clock itself, time5Seconds with its UFO and craft loops, and
+    #       the 10-minute, 30-minute, hourly, daily and monthly handlers. One
+    #       "geoday:" line per timeAdvance that took 300 ms or more; the
+    #       split only with amigaPerfLog 2 - its ~7 E-clock reads a step
+    #       (10 us each) are a third of a quiet day themselves.
+    results.append(("GeoscapeState.cpp (geoday probes: decl)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        'extern "C" unsigned long AmigaGeo5Ms, AmigaGeo5N, AmigaGeo10Ms, AmigaGeo10N;\n',
+        'extern "C" unsigned long AmigaGeo5Ms, AmigaGeo5N, AmigaGeo10Ms, AmigaGeo10N;\n'
+        '#include <cstdio>\n'
+        '#include "amiga_uclock.h"\n'
+        'extern "C" int AmigaPerfLog;\n'
+        'extern "C" void SDLmini_Log(const char *msg);\n'
+        'extern "C" unsigned long amigagfx_millis(void);\n'
+        '/* 6geo: where a day of Geoscape time goes (amigaPerfLog) */\n'
+        'enum { AGD_ADV, AGD_T5, AGD_UFO, AGD_CRAFT, AGD_T10, AGD_T30, AGD_T1H, AGD_T1D, AGD_T1M, AGD_N };\n'
+        'static unsigned long agdUs_[AGD_N], agdCalls_[AGD_N];\n'
+        'struct AgdProbe_\n'
+        '{\n'
+        '\tint s; unsigned long t0;\n'
+        '\tAgdProbe_(int s_) : s(s_), t0(AmigaPerfLog >= 2 ? amiga_uclock_raw() : 0) {}\n'
+        '\t~AgdProbe_() { if (AmigaPerfLog >= 2) { agdUs_[s] += amiga_uclock_raw() - t0; ++agdCalls_[s]; } }\n'
+        '};\n',
+        "geoday decl")))
+    results.append(("GeoscapeState.cpp (geoday probes: timeAdvance)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        "void GeoscapeState::timeAdvance()\n{\n",
+        "void GeoscapeState::timeAdvance()\n{\n"
+        "#ifdef __AMIGA__\n"
+        "\tstruct AgdReport_\n"
+        "\t{\n"
+        "\t\tSavedGame *g; unsigned long t0;\n"
+        "\t\tAgdReport_(SavedGame *g_) : g(g_), t0(0)\n"
+        "\t\t{\n"
+        "\t\t\tif (!AmigaPerfLog) return;\n"
+        "\t\t\tfor (int i = 0; i < AGD_N; ++i) agdUs_[i] = agdCalls_[i] = 0;\n"
+        "\t\t\tt0 = amiga_uclock_raw();\n"
+        "\t\t}\n"
+        "\t\t~AgdReport_()\n"
+        "\t\t{\n"
+        "\t\t\tif (!AmigaPerfLog) return;\n"
+        "\t\t\tunsigned long all = amiga_uclock_raw() - t0;\n"
+        "\t\t\tunsigned long k = amiga_uclock_freq() / 1000;   /* E-clock counts a ms */\n"
+        "\t\t\tif (k == 0) k = 709;\n"
+        "\t\t\tif (all < 300 * k) return;\n"
+        "\t\t\tstatic bool benched = false;\n"
+        "\t\t\tif (!benched)\n"
+        "\t\t\t{\n"
+        "\t\t\t\t/* what the probes themselves and SDL_GetTicks cost, per 1000 calls */\n"
+        "\t\t\t\tbenched = true;\n"
+        "\t\t\t\tvolatile unsigned long sink = 0;\n"
+        "\t\t\t\tunsigned long b0 = amiga_uclock_raw();\n"
+        "\t\t\t\tfor (int i = 0; i < 1000; ++i) sink += amiga_uclock_raw();\n"
+        "\t\t\t\tunsigned long b1 = amiga_uclock_raw();\n"
+        "\t\t\t\tfor (int i = 0; i < 1000; ++i) sink += SDL_GetTicks();\n"
+        "\t\t\t\tunsigned long b2 = amiga_uclock_raw();\n"
+        "\t\t\t\tfor (int i = 0; i < 1000; ++i) sink += amiga_uclock_us();\n"
+        "\t\t\t\tunsigned long b3 = amiga_uclock_raw();\n"
+        "\t\t\t\tfor (int i = 0; i < 1000; ++i) sink += amigagfx_millis();   /* the DateStamp part alone */\n"
+        "\t\t\t\tunsigned long b4 = amiga_uclock_raw();\n"
+        "\t\t\t\tchar bm[200];\n"
+        "\t\t\t\tsnprintf(bm, sizeof bm, \"geoday: 1000 calls cost: raw E-clock %lu us, SDL_GetTicks %lu us, amiga_uclock_us %lu us, DateStamp alone %lu us\",\n"
+        "\t\t\t\t\t(b1 - b0) * 1000 / k, (b2 - b1) * 1000 / k, (b3 - b2) * 1000 / k, (b4 - b3) * 1000 / k);\n"
+        "\t\t\t\tSDLmini_Log(bm);\n"
+        "\t\t\t}\n"
+        "\t\t\tfor (int i = 0; i < AGD_N; ++i) agdUs_[i] /= k;   /* now ms */\n"
+        "\t\t\tall /= k;\n"
+        "\t\t\tunsigned long t5 = agdUs_[AGD_T5], u = agdUs_[AGD_UFO], c = agdUs_[AGD_CRAFT];\n"
+        "\t\t\tunsigned long rest5 = t5 > u + c ? t5 - u - c : 0;\n"
+        "\t\t\tunsigned long hand = 0;\n"
+        "\t\t\tfor (int i = 0; i < AGD_N; ++i) if (i != AGD_UFO && i != AGD_CRAFT) hand += agdUs_[i];\n"
+        "\t\t\tint crafts = 0;\n"
+        "\t\t\tfor (std::vector<Base*>::iterator b = g->getBases()->begin(); b != g->getBases()->end(); ++b)\n"
+        "\t\t\t\tcrafts += (int)(*b)->getCrafts()->size();\n"
+        "\t\t\tchar m[320];\n"
+        "\t\t\tsnprintf(m, sizeof m, \"geoday: %lu steps in %lu ms: clock %lu, t5s %lu (ufo %lu, craft %lu, rest %lu), t10m %lu/%lu, t30m %lu/%lu, t1h %lu/%lu, t1d %lu/%lu, t1m %lu/%lu, other %lu ms; %d ufos, %d bases, %d crafts\",\n"
+        "\t\t\t\tagdCalls_[AGD_ADV], all, agdUs_[AGD_ADV], t5, u, c, rest5,\n"
+        "\t\t\t\tagdUs_[AGD_T10], agdCalls_[AGD_T10], agdUs_[AGD_T30], agdCalls_[AGD_T30],\n"
+        "\t\t\t\tagdUs_[AGD_T1H], agdCalls_[AGD_T1H], agdUs_[AGD_T1D], agdCalls_[AGD_T1D],\n"
+        "\t\t\t\tagdUs_[AGD_T1M], agdCalls_[AGD_T1M], all > hand ? all - hand : 0,\n"
+        "\t\t\t\t(int)g->getUfos()->size(), (int)g->getBases()->size(), crafts);\n"
+        "\t\t\tSDLmini_Log(m);\n"
+        "\t\t}\n"
+        "\t} agdReport_(_game->getSavedGame());\n"
+        "#endif\n",
+        "geoday report")))
+    results.append(("GeoscapeState.cpp (geoday probes: clock)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        "\t\ttrigger = _game->getSavedGame()->getTime()->advance();\n",
+        "\t\t{\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t\tAgdProbe_ pa_(AGD_ADV);\n"
+        "#endif\n"
+        "\t\t\ttrigger = _game->getSavedGame()->getTime()->advance();\n"
+        "\t\t}\n",
+        "geoday clock")))
+    results.append(("GeoscapeState.cpp (geoday probes: t5s)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        "\t\t~AmGeo5_() { AmigaGeo5Ms += SDL_GetTicks() - t0; ++AmigaGeo5N; } } amGeo5_;\n"
+        "#endif\n",
+        "\t\t~AmGeo5_() { AmigaGeo5Ms += SDL_GetTicks() - t0; ++AmigaGeo5N; } } amGeo5_;\n"
+        "\tAgdProbe_ agd5_(AGD_T5);\n"
+        "#endif\n",
+        "geoday t5s")))
+    results.append(("GeoscapeState.cpp (geoday probes: ufo loop)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        "\t// Handle UFO logic\n",
+        "#ifdef __AMIGA__\n"
+        "\tunsigned long agdM_ = AmigaPerfLog >= 2 ? amiga_uclock_raw() : 0;\n"
+        "#endif\n"
+        "\t// Handle UFO logic\n",
+        "geoday ufo")))
+    results.append(("GeoscapeState.cpp (geoday probes: craft loop)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        "\t// Handle craft logic\n",
+        "#ifdef __AMIGA__\n"
+        "\tif (AmigaPerfLog >= 2) { unsigned long n_ = amiga_uclock_raw(); agdUs_[AGD_UFO] += n_ - agdM_; ++agdCalls_[AGD_UFO]; agdM_ = n_; }\n"
+        "#endif\n"
+        "\t// Handle craft logic\n",
+        "geoday craft")))
+    results.append(("GeoscapeState.cpp (geoday probes: cleanup)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        "\t// Clean up dead UFOs and end dogfights which were minimized.\n",
+        "#ifdef __AMIGA__\n"
+        "\tif (AmigaPerfLog >= 2) { agdUs_[AGD_CRAFT] += amiga_uclock_raw() - agdM_; ++agdCalls_[AGD_CRAFT]; }\n"
+        "#endif\n"
+        "\t// Clean up dead UFOs and end dogfights which were minimized.\n",
+        "geoday cleanup")))
+    results.append(("GeoscapeState.cpp (geoday probes: t10m)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        "\t\t~AmGeo10_() { AmigaGeo10Ms += SDL_GetTicks() - t0; ++AmigaGeo10N; } } amGeo10_;\n"
+        "#endif\n",
+        "\t\t~AmGeo10_() { AmigaGeo10Ms += SDL_GetTicks() - t0; ++AmigaGeo10N; } } amGeo10_;\n"
+        "\tAgdProbe_ agd10_(AGD_T10);\n"
+        "#endif\n",
+        "geoday t10m")))
+    for fn, slot in (("time30Minutes", "AGD_T30"), ("time1Hour", "AGD_T1H"),
+                     ("time1Day", "AGD_T1D"), ("time1Month", "AGD_T1M")):
+        results.append(("GeoscapeState.cpp (geoday probes: %s)" % fn, edit(
+            os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+            "void GeoscapeState::%s()\n{\n" % fn,
+            "void GeoscapeState::%s()\n{\n"
+            "#ifdef __AMIGA__\n"
+            "\tAgdProbe_ agd_(%s);\n"
+            "#endif\n" % (fn, slot),
+            "geoday %s" % fn)))
+    # The loop and what follows it (the time display, the globe): two
+    # E-clock reads a timeAdvance, so also with amigaPerfLog 1.
+    results.append(("GeoscapeState.cpp (geoday probes: loop end)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        "\t_pause = !_dogfightsToBeStarted.empty();\n",
+        "#ifdef __AMIGA__\n"
+        "\tif (AmigaPerfLog) agdLoopEnd_ = amiga_uclock_raw();\n"
+        "#endif\n"
+        "\t_pause = !_dogfightsToBeStarted.empty();\n",
+        "geoday loop end")))
+    results.append(("GeoscapeState.cpp (geoday probes: loop end decl)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        "static unsigned long agdUs_[AGD_N], agdCalls_[AGD_N];\n",
+        "static unsigned long agdUs_[AGD_N], agdCalls_[AGD_N];\n"
+        "static unsigned long agdLoopEnd_;   /* E-clock when the steps were done */\n",
+        "geoday loop end decl")))
+    results.append(("GeoscapeState.cpp (geoday probes: loop end report)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        "\t\t\tSDLmini_Log(m);\n"
+        "\t\t}\n"
+        "\t} agdReport_(_game->getSavedGame());\n",
+        "\t\t\tSDLmini_Log(m);\n"
+        "\t\t\tsnprintf(m, sizeof m, \"geoday: the steps %lu ms, then the time display and the globe %lu ms\",\n"
+        "\t\t\t\t(agdLoopEnd_ - t0) / k, all > (agdLoopEnd_ - t0) / k ? all - (agdLoopEnd_ - t0) / k : 0);\n"
+        "\t\t\tSDLmini_Log(m);\n"
+        "\t\t}\n"
+        "\t} agdReport_(_game->getSavedGame());\n",
+        "geoday loop end report")))
+    # The t5s/t10m probes (TEMP, 0.9) timed every time5Seconds with two
+    # SDL_GetTicks() calls - 57 us each here (DateStamp + the music pump):
+    # ~2 s of every Geoscape day at 1 Day, more than the game's own logic
+    # (Warp4070, 2026-10-23). Only with amigaPerfLog 2 now.
+    results.append(("GeoscapeState.cpp (t5s probe only with amigaPerfLog)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        "\tstruct AmGeo5_ { unsigned int t0; AmGeo5_() : t0(SDL_GetTicks()) {} \n"
+        "\t\t~AmGeo5_() { AmigaGeo5Ms += SDL_GetTicks() - t0; ++AmigaGeo5N; } } amGeo5_;\n",
+        "\tstruct AmGeo5_ { unsigned int t0; AmGeo5_() : t0(AmigaPerfLog >= 2 ? SDL_GetTicks() : 0) {} \n"
+        "\t\t~AmGeo5_() { if (AmigaPerfLog >= 2) AmigaGeo5Ms += SDL_GetTicks() - t0; ++AmigaGeo5N; } } amGeo5_;\n",
+        "t5s probe gated")))
+    results.append(("GeoscapeState.cpp (t10m probe only with amigaPerfLog)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        "\tstruct AmGeo10_ { unsigned int t0; AmGeo10_() : t0(SDL_GetTicks()) {} \n"
+        "\t\t~AmGeo10_() { AmigaGeo10Ms += SDL_GetTicks() - t0; ++AmigaGeo10N; } } amGeo10_;\n",
+        "\tstruct AmGeo10_ { unsigned int t0; AmGeo10_() : t0(AmigaPerfLog >= 2 ? SDL_GetTicks() : 0) {} \n"
+        "\t\t~AmGeo10_() { if (AmigaPerfLog >= 2) AmigaGeo10Ms += SDL_GetTicks() - t0; ++AmigaGeo10N; } } amGeo10_;\n",
+        "t10m probe gated")))
 
     for root, _dirs, files in os.walk(src):
         for fn in files:
