@@ -1146,6 +1146,57 @@ static int layer_frame(void)
 	return 1;
 }
 
+/* ---- bug reports (F10) -----------------------------------------------------
+ * The picture the player sees: the display read back when it can be (after
+ * layer frames the screen buffer is behind it), else the screen buffer.
+ * w x h must be the screen's. Returns 1 when dst was filled. */
+int SDLmini_ReadShown(Uint8 *dst, int pitch, int w, int h)
+{
+	int y;
+	if (s_screen == NULL || s_screen->w != w || s_screen->h != h) return 0;
+	if (amigagfx_display_layer_ok() && amigagfx_display_read(dst, pitch)) return 1;
+	if (s_screen_stale) return 0;
+	for (y = 0; y < h; y++)
+		memcpy(dst + (size_t)y * pitch, (const Uint8 *)s_screen->pixels + (size_t)y * s_screen->pitch, (size_t)w);
+	return 1;
+}
+
+/* A window over the picture closed (Game::popState): the next frame is
+ * composed in full and sent whole, with no comparison against the last one
+ * and no layer frame. A message box over the battlescape (a panic, "saving
+ * game") stayed on the display after it closed, the map's later repairs
+ * drawn over it (bug report, Warp4070, 2026-10-23). */
+void SDLmini_ForceFullFrame(void)
+{
+	s_qprevn = -1;
+	if (s_screen != NULL) dirty_add(0, 0, s_screen->w, s_screen->h);
+}
+
+/* The presentation state: what the last frame was made of, and how. */
+void SDLmini_ReportFrame(FILE *f)
+{
+	int i;
+	fprintf(f, "frameskip %d, vram layer %d, screen %dx%d, stale screen %d back %d, forced %d\n",
+	        SDLmini_FrameSkip, SDLmini_VramLayer, s_screen ? s_screen->w : 0, s_screen ? s_screen->h : 0,
+	        s_screen_stale, s_back_stale, s_qforced);
+	fprintf(f, "counters: skipped %lu, layer %lu, direct %lu, verify mismatches %lu\n",
+	        s_perf_fskip, s_perf_flayer, s_perf_fdirect, s_perf_fverr);
+	fprintf(f, "layer %p: full %d, moved %d,%d, %d damage rects\n",
+	        (void *)s_layer, s_layer_full, s_layer_dx, s_layer_dy, s_layer_ndmg);
+	for (i = 0; i < s_layer_ndmg; i++)
+		fprintf(f, "  dmg %d,%d %dx%d\n", s_layer_dmg[i].x, s_layer_dmg[i].y, s_layer_dmg[i].w, s_layer_dmg[i].h);
+	fprintf(f, "last frame: %d operations (src %p = back buffer)\n", s_qprevn, (void *)s_back);
+	for (i = 0; i < s_qprevn && i < SKIP_QMAX; i++) {
+		const SkipOp *o = &s_qprev[i];
+		if (o->src == NULL)
+			fprintf(f, "  %3d fill %d,%d %dx%d colour %lu\n", i, o->dr.x, o->dr.y, o->dr.w, o->dr.h, (unsigned long)o->key);
+		else
+			fprintf(f, "  %3d blit %p (%dx%d gen %lu) %d,%d %dx%d -> %d,%d %dx%d key %08lx\n", i, (void *)o->src,
+			        o->src->w, o->src->h, (unsigned long)o->gen, o->sr.x, o->sr.y, o->sr.w, o->sr.h,
+			        o->dr.x, o->dr.y, o->dr.w, o->dr.h, (unsigned long)o->key);
+	}
+}
+
 /* Screen::flip is about to diff-copy `back` onto the screen. Returns 1 when
  * the frame equals the previous one and nothing more is to be done. */
 static int skip_frame_end(SDL_Surface *back)

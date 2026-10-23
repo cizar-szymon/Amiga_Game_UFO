@@ -9570,6 +9570,16 @@ def main():
         "#endif\n"
         "\t\tbreak;\n",
         "native SCALE_SCREEN 640x480")))
+    # An Amiga keyboard has no F12: Help takes a screenshot as well.
+    results.append(("Screen.cpp (Help takes a screenshot)", edit(
+        os.path.join(src, "Engine", "Screen.cpp"),
+        "\telse if (action->getDetails()->type == SDL_KEYDOWN && action->getDetails()->key.keysym.sym == Options::keyScreenshot)\n",
+        "\telse if (action->getDetails()->type == SDL_KEYDOWN && (action->getDetails()->key.keysym.sym == Options::keyScreenshot\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t|| action->getDetails()->key.keysym.sym == SDLK_HELP   /* no F12 on an Amiga keyboard */\n"
+        "#endif\n"
+        "\t\t))\n",
+        "Help takes a screenshot")))
 
     # 6amZ. Row copies by MOVE16 on 040/060 (native/amiga_copy.c): the frame
     #       cache's copy into the map surface uses amiga_copy_rows.
@@ -11573,6 +11583,8 @@ def main():
         "\ttry\n"
         "\t{\n"
         "\t\tstd::vector<unsigned char> img_((size_t)w_ * h_);\n"
+        "\t\t/* what the player sees: the display, which can be ahead of _screen */\n"
+        "\t\tif (!SDLmini_ReadShown(&img_[0], w_, w_, h_))\n"
         "\t\tfor (int y_ = 0; y_ < h_; ++y_)\n"
         "\t\t\tmemcpy(&img_[(size_t)y_ * w_], (const Uint8 *)_screen->pixels + (size_t)y_ * _screen->pitch, w_);\n"
         "\t\tconst SDL_Palette *pal_ = _screen->format->palette;\n"
@@ -11614,8 +11626,131 @@ def main():
         "#include <cstring>\n"
         "#include <cstdio>\n"
         "extern \"C\" void SDLmini_Log(const char *msg);\n"
+        "extern \"C\" int SDLmini_ReadShown(Uint8 *dst, int pitch, int w, int h);\n"
         "#endif\n",
         "screenshot includes")))
+
+    # 6bug. F10, the bug report key (the projects' standard). A player who sees
+    #       something wrong presses it and gets, in the user folder, bugNNN.png
+    #       (the picture on the display, read back from the card), bugNNN.txt
+    #       (the states on the stack, the video settings, the battle's turn,
+    #       how the last frame was put together) and bugNNN.sav (the game as
+    #       it is, loadable). The key goes no further: upstream's F10 is the
+    #       debug-only voxel view.
+    results.append(("Game.cpp (F10 bug report)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        "void Game::run()\n"
+        "{\n",
+        "#ifdef __AMIGA__\n"
+        "/* AMIGA-PORT (6bug): F10 writes a bug report into the user folder. */\n"
+        "static void amigaBugReport(Screen *screen, std::list<State*> &states, SavedGame *save)\n"
+        "{\n"
+        "\tconst std::string dir_ = Options::getMasterUserFolder();\n"
+        "\tchar n_[16];\n"
+        "\tint i_ = 0;\n"
+        "\tdo { snprintf(n_, sizeof n_, \"bug%03d\", i_++); } while (i_ < 1000 && CrossPlatform::fileExists(dir_ + n_ + \".txt\"));\n"
+        "\tconst std::string base_ = dir_ + n_;\n"
+        "\tSDLmini_Log((\"bugreport: \" + base_).c_str());\n"
+        "\tscreen->screenshot(base_ + \".png\");\n"
+        "\tFILE *f_ = fopen((base_ + \".txt\").c_str(), \"w\");\n"
+        "\tif (f_ != 0)\n"
+        "\t{\n"
+        "\t\tfprintf(f_, \"AmiXcom %s, bug report %s, %lu ms after start\\n\", AMIGA_BUILD_ID, n_, (unsigned long)SDL_GetTicks());\n"
+        "\t\tfprintf(f_, \"screen %dx%d; display option %dx%d; base %dx%d, Geoscape %dx%d, battles %dx%d\\n\",\n"
+        "\t\t\tscreen->getWidth(), screen->getHeight(), Options::displayWidth, Options::displayHeight,\n"
+        "\t\t\tOptions::baseXResolution, Options::baseYResolution, Options::baseXGeoscape, Options::baseYGeoscape,\n"
+        "\t\t\tOptions::baseXBattlescape, Options::baseYBattlescape);\n"
+        "\t\tfprintf(f_, \"scales: Geoscape %d, battles %d; native %d, maximize info screens %d, frame skip %d, VRAM layer %d, own scroll %d, map verify %d\\n\",\n"
+        "\t\t\tOptions::geoscapeScale, Options::battlescapeScale, (int)Options::amigaNativeScale, (int)Options::maximizeInfoScreens,\n"
+        "\t\t\tOptions::amigaFrameSkip, (int)Options::amigaVramLayer, (int)Options::amigaScrollOwn, Options::amigaMapVerify);\n"
+        "\t\tfprintf(f_, \"states, bottom first:\\n\");\n"
+        "\t\tfor (std::list<State*>::iterator s_ = states.begin(); s_ != states.end(); ++s_)\n"
+        "\t\t\tfprintf(f_, \"  %s%s\\n\", typeid(**s_).name(), (*s_)->isScreen() ? \" (full screen)\" : \"\");\n"
+        "\t\tSavedBattleGame *b_ = save ? save->getSavedBattle() : 0;\n"
+        "\t\tif (b_ != 0)\n"
+        "\t\t{\n"
+        "\t\t\tBattleUnit *u_ = b_->getSelectedUnit();\n"
+        "\t\t\tfprintf(f_, \"battle: map %dx%d, turn %d, side %d, selected unit %d\", b_->getMapSizeX(), b_->getMapSizeY(),\n"
+        "\t\t\t\tb_->getTurn(), (int)b_->getSide(), u_ ? u_->getId() : -1);\n"
+        "\t\t\tif (u_ != 0) fprintf(f_, \" at %d,%d,%d\", u_->getPosition().x, u_->getPosition().y, u_->getPosition().z);\n"
+        "\t\t\tfprintf(f_, \"\\n\");\n"
+        "\t\t}\n"
+        "\t\tSDLmini_ReportFrame(f_);\n"
+        "\t\tfclose(f_);\n"
+        "\t}\n"
+        "\tif (save != 0)\n"
+        "\t{\n"
+        "\t\ttry\n"
+        "\t\t{\n"
+        "\t\t\tsave->save(std::string(n_) + \".sav\");\n"
+        "\t\t}\n"
+        "\t\tcatch (std::exception &e_)\n"
+        "\t\t{\n"
+        "\t\t\tSDLmini_Log((std::string(\"bugreport: save failed: \") + e_.what()).c_str());\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\tSDLmini_Log(\"bugreport: done\");\n"
+        "}\n"
+        "#endif\n"
+        "\n"
+        "void Game::run()\n"
+        "{\n",
+        "F10 bug report")))
+    # 6pop. A message box over the battlescape (a panic, a death, "saving
+    #       game") stayed on the display after it closed, with the map's
+    #       later repairs drawn over it (F10 report bug000, Warp4070,
+    #       2026-10-23: no such state on the stack, the box on the screen).
+    #       Whatever closes, the next frame is composed and sent in full.
+    results.append(("Game.cpp (full frame after a state closes)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        "\t_deleted.push_back(_states.back());\n"
+        "\t_states.pop_back();\n"
+        "\t_init = false;\n",
+        "\t_deleted.push_back(_states.back());\n"
+        "\t_states.pop_back();\n"
+        "\t_init = false;\n"
+        "#ifdef __AMIGA__\n"
+        "\tSDLmini_ForceFullFrame();   /* what it covered must reach the display (6pop) */\n"
+        "#endif\n",
+        "full frame after a state closes")))
+    results.append(("Game.cpp (F10 bug report key)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        "\t\t\t\t\t_fpsCounter->handle(&action);\n"
+        "\t\t\t\t\tif (action.getDetails()->type == SDL_KEYDOWN)\n"
+        "\t\t\t\t\t{\n",
+        "\t\t\t\t\t_fpsCounter->handle(&action);\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t\t\t\tif (action.getDetails()->type == SDL_KEYDOWN && action.getDetails()->key.keysym.sym == SDLK_F10)\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tamigaBugReport(_screen, _states, _save);\n"
+        "\t\t\t\t\t\tcontinue;\n"
+        "\t\t\t\t\t}\n"
+        "#endif\n"
+        "\t\t\t\t\tif (action.getDetails()->type == SDL_KEYDOWN)\n"
+        "\t\t\t\t\t{\n",
+        "F10 bug report key")))
+    results.append(("Game.cpp (F10 bug report includes)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        "#include \"../Menu/TestState.h\"\n",
+        "#include \"../Menu/TestState.h\"\n"
+        "#ifdef __AMIGA__\n"
+        "#include <cstdio>\n"
+        "#include <typeinfo>\n"
+        "#include \"../Savegame/BattleUnit.h\"\n"
+        "#if defined(__has_include)\n"
+        "#if __has_include(\"amiga_buildid.h\")\n"
+        "#include \"amiga_buildid.h\"\n"
+        "#endif\n"
+        "#endif\n"
+        "#ifndef AMIGA_BUILD_ID\n"
+        "#define AMIGA_BUILD_ID \"unknown\"\n"
+        "#endif\n"
+        "extern \"C\" void SDLmini_Log(const char *msg);\n"
+        "extern \"C\" void SDLmini_ReportFrame(FILE *f);\n"
+        "extern \"C\" void SDLmini_ForceFullFrame(void);\n"
+        "#endif\n",
+        "F10 bug report includes")))
+
 
     for root, _dirs, files in os.walk(src):
         for fn in files:
