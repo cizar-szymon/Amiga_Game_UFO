@@ -9548,6 +9548,28 @@ def main():
         "\n"
         "\tif (!_surface || (_surface->getSurface()->format->BitsPerPixel != _bpp ||\n",
         "amigaNativeScale")))
+    # With amigaNativeScale the Geoscape reopens the screen at 320x200 and
+    # resetDisplay copies that into Options::displayWidth/Height, so a battle
+    # scale of SCALE_SCREEN (the Warp 640x480 entry) would come out 320x200.
+    # The Warp entries only use it for a 640x480 battle screen.
+    results.append(("Screen.cpp (native SCALE_SCREEN 640x480)", edit(
+        os.path.join(src, "Engine", "Screen.cpp"),
+        "\tcase SCALE_SCREEN:\n"
+        "\t\twidth = Options::displayWidth;\n"
+        "\t\theight = Options::displayHeight / pixelRatioY;\n"
+        "\t\tbreak;\n",
+        "\tcase SCALE_SCREEN:\n"
+        "\t\twidth = Options::displayWidth;\n"
+        "\t\theight = Options::displayHeight / pixelRatioY;\n"
+        "#ifdef __AMIGA__\n"
+        "\t\tif (Options::amigaNativeScale)\n"
+        "\t\t{\n"
+        "\t\t\twidth = 640;\n"
+        "\t\t\theight = 480;\n"
+        "\t\t}\n"
+        "#endif\n"
+        "\t\tbreak;\n",
+        "native SCALE_SCREEN 640x480")))
 
     # 6amZ. Row copies by MOVE16 on 040/060 (native/amiga_copy.c): the frame
     #       cache's copy into the map surface uses amiga_copy_rows.
@@ -11140,9 +11162,10 @@ def main():
         "\tint _resAmount, _resCurrent;\n"
         "#ifdef __AMIGA__\n"
         "\tint _amResMixed;   /* index of the Warp entry (Geoscape 320x200, battles 640x400), after the real modes; -1 none */\n"
+        "\tint _amResWarp480;   /* the Warp entry with battles on a 640x480 screen; -1 none */\n"
         "\tText *_amTxtWarp, *_amTxtGeoFixed, *_amTxtBattleFixed;   /* its name, and the scales it fixes */\n"
         "\tvoid amigaApplyRes();\n"
-        "\tvoid amigaShowWarp(bool on);\n"
+        "\tvoid amigaShowWarp(int which);   /* 0 a real mode, 1 Warp 640x400, 2 Warp 640x480 */\n"
         "#endif\n",
         "mixed entry members")))
     results.append(("OptionsVideoState.cpp (Mixed entry in the list)", edit(
@@ -11150,6 +11173,7 @@ def main():
         "\t// Get available fullscreen modes\n",
         "#ifdef __AMIGA__\n"
         "\t_amResMixed = -1;\n"
+        "\t_amResWarp480 = -1;\n"
         "\t_amTxtWarp = new Text(92, 20, 92, 25);\n"
         "\t_amTxtGeoFixed = new Text(104, 16, 94, 92);\n"
         "\t_amTxtBattleFixed = new Text(104, 16, 94, 122);\n"
@@ -11174,7 +11198,8 @@ def main():
         "\t\t_resAmount = i;\n"
         "#ifdef __AMIGA__\n"
         "\t\t_amResMixed = _resAmount++;\n"
-        "\t\tif (Options::amigaNativeScale) _resCurrent = _amResMixed;\n"
+        "\t\t_amResWarp480 = _resAmount++;\n"
+        "\t\tif (Options::amigaNativeScale) _resCurrent = (Options::battlescapeScale == SCALE_SCREEN) ? _amResWarp480 : _amResMixed;\n"
         "#endif\n",
         "mixed entry count")))
     results.append(("OptionsVideoState.cpp (Mixed entry shown)", edit(
@@ -11184,7 +11209,7 @@ def main():
         "\t_btnDisplayResolutionUp->onMouseClick",
         "\t_txtDisplayHeight->setText(ssH.str());\n"
         "#ifdef __AMIGA__\n"
-        "\tamigaShowWarp(_amResMixed >= 0 && _resCurrent == _amResMixed);\n"
+        "\tamigaShowWarp(_amResMixed >= 0 && _resCurrent == _amResMixed ? 1 : _amResWarp480 >= 0 && _resCurrent == _amResWarp480 ? 2 : 0);\n"
         "#endif\n"
         "\n"
         "\t_btnDisplayResolutionUp->onMouseClick",
@@ -11196,8 +11221,11 @@ def main():
         "#ifdef __AMIGA__\n"
         "/* the Warp entry shows its name over the size fields and its fixed\n"
         " * scales in place of the scale lists, which it does not let change */\n"
-        "void OptionsVideoState::amigaShowWarp(bool on)\n"
+        "void OptionsVideoState::amigaShowWarp(int which)\n"
         "{\n"
+        "\tconst bool on = which != 0;\n"
+        "\tif (which == 1) { _amTxtWarp->setText(L\"WARP RTG\\n320x200 / 640x400\"); _amTxtBattleFixed->setText(tr(\"STR_2X\")); }\n"
+        "\tif (which == 2) { _amTxtWarp->setText(L\"WARP RTG\\n320x200 / 640x480\"); _amTxtBattleFixed->setText(tr(\"STR_FULL_DISPLAY\")); }\n"
         "\t_amTxtWarp->setVisible(on);\n"
         "\t_amTxtGeoFixed->setVisible(on);\n"
         "\t_amTxtBattleFixed->setVisible(on);\n"
@@ -11218,14 +11246,23 @@ def main():
         "\t\tOptions::newDisplayWidth = Screen::ORIGINAL_WIDTH;\n"
         "\t\tOptions::newDisplayHeight = Screen::ORIGINAL_HEIGHT;\n"
         "\t\tbattle_ = SCALE_2X;\n"
-        "\t\tamigaShowWarp(true);\n"
+        "\t\tamigaShowWarp(1);\n"
+        "\t}\n"
+        "\telse if (_resCurrent == _amResWarp480)\n"
+        "\t{\n"
+        "\t\t/* the Geoscape at its original 320x200, battles on the whole 640x480 */\n"
+        "\t\tOptions::newAmigaNativeScale = true;\n"
+        "\t\tOptions::newDisplayWidth = 640;\n"
+        "\t\tOptions::newDisplayHeight = 480;\n"
+        "\t\tbattle_ = SCALE_SCREEN;\n"
+        "\t\tamigaShowWarp(2);\n"
         "\t}\n"
         "\telse\n"
         "\t{\n"
         "\t\tOptions::newAmigaNativeScale = false;\n"
         "\t\tif (_res[_resCurrent]->w == 640 && _res[_resCurrent]->h == 400)\n"
         "\t\t\tgeo_ = battle_ = SCALE_SCREEN;   /* native 640x400 */\n"
-        "\t\tamigaShowWarp(false);\n"
+        "\t\tamigaShowWarp(0);\n"
         "\t}\n"
         "\tOptions::newGeoscapeScale = geo_;\n"
         "\tOptions::newBattlescapeScale = battle_;\n"
@@ -11238,7 +11275,7 @@ def main():
         "{\n"
         "#ifdef __AMIGA__\n"
         "\tamigaApplyRes();\n"
-        "\tif (_resCurrent == _amResMixed) return;\n"
+        "\tif (_resCurrent == _amResMixed || _resCurrent == _amResWarp480) return;\n"
         "#endif\n",
         "mixed entry chosen")))
     for which_ in ("Width", "Height"):
