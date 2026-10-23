@@ -11036,6 +11036,26 @@ def main():
         "\t_info.push_back(OptionInfo(\"maximizeInfoScreens\", &maximizeInfoScreens, false, \"STR_MAXIMIZE_INFO_SCREENS\", \"STR_GENERAL\"));\n"
         "#endif\n",
         "default info screens 320x200")))
+    # With amigaNativeScale (the Warp entries) the info screens are always
+    # 320x200, whatever maximizeInfoScreens says: the equip screen before a
+    # mission and the ones opened during it stay in the Geoscape's mode.
+    for rel, n in (("InventoryState.cpp", 2), ("MedikitState.cpp", 2),
+                   ("MiniMapState.cpp", 2), ("ScannerState.cpp", 2),
+                   ("UnitInfoState.cpp", 2)):
+        p = os.path.join(src, "Battlescape", rel)
+        with open(p, "r", encoding="utf-8", errors="surrogateescape") as f:
+            text = f.read()
+        new = "Options::maximizeInfoScreens || Options::amigaNativeScale)"
+        if text.count(new) == n:
+            state = "already"
+        else:
+            if text.count("Options::maximizeInfoScreens)") != n:
+                raise SystemExit("PATCH FAILED (native info screens): %s" % p)
+            text = text.replace("Options::maximizeInfoScreens)", new)
+            with open(p, "w", encoding="utf-8", errors="surrogateescape") as f:
+                f.write(text)
+            state = "applied"
+        results.append(("%s (native info screens 320x200)" % rel, state))
     results.append(("Options.cpp (Restore Defaults keeps the mods)", edit(
         os.path.join(src, "Engine", "Options.cpp"),
         "\tbackupDisplay();\n"
