@@ -12016,6 +12016,223 @@ def main():
         "\t\t\t_game->getMod()->amigaPrerenderMusic();\n",
         "prerender for amiga music")))
 
+    # 6amV. SOUND EFFECTS: PC game / Amiga. The Amiga UFO's effects are
+    #       named 8SVX files (data/UFO_AMIGA/TacticalFX, GeoScapeFX) and the
+    #       game asks for the PC's numbered ones, so a table gives each
+    #       number its Amiga file by meaning: what the rulesets and Mod.cpp
+    #       use that number for (fireSound of the laser rifle, deathSound of
+    #       the mutons, DOOR_OPEN ...). Waveform correlation against the PC
+    #       recordings (tools/match_amiga_sfx.py) agreed only where the
+    #       Amiga kept the same recording (metal steps, the Geoscape click,
+    #       a UFO destroyed); the rest are new recordings. Footstep
+    #       materials beyond metal and concrete are a best guess. Numbers
+    #       with no Amiga sound keep the PC one. Loaded at startup.
+    results.append(("Options.inc.h (amigaSfx)", edit(
+        os.path.join(src, "Engine", "Options.inc.h"),
+        "OPT int amigaMusicSource; /* 0 GM.CAT samples, 1 ADLIB.CAT (OPL2) */\n",
+        "OPT int amigaMusicSource; /* 0 GM.CAT samples, 1 ADLIB.CAT (OPL2) */\n"
+        "OPT bool amigaSfx; /* the Amiga UFO's sound effects (data/UFO_AMIGA) */\n",
+        "amigaSfx var")))
+    results.append(("Options.cpp (amigaSfx)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t_info.push_back(OptionInfo(\"amigaMusicSource\", &amigaMusicSource, 0));\n",
+        "\t_info.push_back(OptionInfo(\"amigaMusicSource\", &amigaMusicSource, 0));\n"
+        "\t_info.push_back(OptionInfo(\"amigaSfx\", &amigaSfx, false));\n",
+        "amigaSfx info")))
+    results.append(("en-US.yml (sound effects strings)", edit(
+        os.path.join(src, "..", "bin", "common", "Language", "en-US.yml"),
+        "  STR_AMIGA_MUSIC_SRC: \"MUSIC SOURCE\"\n",
+        "  STR_AMIGA_MUSIC_SRC: \"MUSIC SOURCE\"\n"
+        "  STR_AMIGA_SFX: \"SOUND EFFECTS\"\n"
+        "  STR_AMIGA_SFX_DESC: \"PC game plays the DOS effects (SOUND/SAMPLE.CAT); Amiga plays the effects of the Amiga UFO from your own game disks (data/UFO_AMIGA/TacticalFX and GeoScapeFX). An effect the Amiga game does not have stays the PC one. Takes effect at the next start.\"\n",
+        "sound effects strings")))
+    results.append(("Sound.h (amigaReplace)", edit(
+        os.path.join(src, "Engine", "Sound.h"),
+        "\tvoid load(const void *data, unsigned int size);\n",
+        "\tvoid load(const void *data, unsigned int size);\n"
+        "#ifdef __AMIGA__\n"
+        "\t/// Swaps the sound for another WAV in memory (6amV); keeps the old on failure.\n"
+        "\tbool amigaReplace(const void *data, unsigned int size);\n"
+        "#endif\n",
+        "amigaReplace decl")))
+    results.append(("Sound.cpp (amigaReplace)", edit(
+        os.path.join(src, "Engine", "Sound.cpp"),
+        "void Sound::play(int channel, int angle, int distance) const\n",
+        "#ifdef __AMIGA__\n"
+        "bool Sound::amigaReplace(const void *data, unsigned int size)\n"
+        "{\n"
+        "\tMix_Chunk *old = _sound;\n"
+        "\t_sound = 0;\n"
+        "\ttry\n"
+        "\t{\n"
+        "\t\tload(data, size);\n"
+        "\t}\n"
+        "\tcatch (...)\n"
+        "\t{\n"
+        "\t\t_sound = old;\n"
+        "\t\treturn false;\n"
+        "\t}\n"
+        "\tif (old != 0) Mix_FreeChunk(old);\n"
+        "\treturn true;\n"
+        "}\n"
+        "#endif\n"
+        "\n"
+        "void Sound::play(int channel, int angle, int distance) const\n",
+        "amigaReplace")))
+    results.append(("Mod.cpp (Amiga sound effects: table)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "void Mod::loadVanillaResources()\n{\n",
+        "#ifdef __AMIGA__\n"
+        "/* 6amV: the PC sound numbers and the Amiga UFO's file for each */\n"
+        "struct AmigaSfx_ { const char *set; int index; const char *file; };\n"
+        "static const AmigaSfx_ amigaSfxTable_[] =\n"
+        "{\n"
+        "\t/* Geoscape (GEO.CAT) */\n"
+        "\t{ \"GEO.CAT\", 0, \"GeoScapeFX/Comp1\" },     /* BUTTON_PRESS */\n"
+        "\t{ \"GEO.CAT\", 1, \"GeoScapeFX/Window\" },    /* WINDOW_POPUP */\n"
+        "\t{ \"GEO.CAT\", 2, \"GeoScapeFX/Window2\" },\n"
+        "\t{ \"GEO.CAT\", 3, \"GeoScapeFX/Window\" },\n"
+        "\t{ \"GEO.CAT\", 4, \"GeoScapeFX/Cannon\" },    /* craft cannon */\n"
+        "\t{ \"GEO.CAT\", 5, \"GeoScapeFX/Photon\" },    /* Stingray, Avalanche */\n"
+        "\t{ \"GEO.CAT\", 6, \"GeoScapeFX/Comp1\" },\n"
+        "\t{ \"GEO.CAT\", 7, \"GeoScapeFX/FBall\" },     /* fusion ball */\n"
+        "\t{ \"GEO.CAT\", 8, \"GeoScapeFX/LCann\" },     /* laser cannon, UFO_FIRE */\n"
+        "\t{ \"GEO.CAT\", 9, \"GeoScapeFX/PBeam\" },     /* plasma beam */\n"
+        "\t{ \"GEO.CAT\", 10, \"GeoScapeFX/IntHit\" },   /* INTERCEPTOR_HIT, UFO_CRASH */\n"
+        "\t{ \"GEO.CAT\", 11, \"GeoScapeFX/UDest\" },    /* UFO_EXPLODE */\n"
+        "\t{ \"GEO.CAT\", 12, \"GeoScapeFX/UHit\" },     /* UFO_HIT */\n"
+        "\t{ \"GEO.CAT\", 13, \"GeoScapeFX/IntDest\" },  /* INTERCEPTOR_EXPLODE */\n"
+        "\t/* battles (BATTLE.CAT) */\n"
+        "\t{ \"BATTLE.CAT\", 0, \"TacticalFX/Snake\" },   /* snakeman moving */\n"
+        "\t{ \"BATTLE.CAT\", 2, \"TacticalFX/Explode\" }, /* SMALL_EXPLOSION */\n"
+        "\t{ \"BATTLE.CAT\", 3, \"TacticalFX/DoorOpen\" },\n"
+        "\t{ \"BATTLE.CAT\", 4, \"TacticalFX/Cannon\" },  /* pistol, rifle */\n"
+        "\t{ \"BATTLE.CAT\", 5, \"TacticalFX/BigExp\" },  /* LARGE_EXPLOSION */\n"
+        "\t{ \"BATTLE.CAT\", 6, \"TacticalFX/MutDie\" },  /* mutons dying */\n"
+        "\t{ \"BATTLE.CAT\", 7, \"TacticalFX/Squish\" },  /* celatid dying */\n"
+        "\t{ \"BATTLE.CAT\", 8, \"TacticalFX/Die3\" },    /* snakemen, silacoid dying */\n"
+        "\t{ \"BATTLE.CAT\", 9, \"TacticalFX/Die2\" },    /* chryssalid, ethereals dying */\n"
+        "\t{ \"BATTLE.CAT\", 10, \"TacticalFX/Die1\" },   /* sectoids, floaters, reaper dying */\n"
+        "\t{ \"BATTLE.CAT\", 11, \"TacticalFX/Photon\" }, /* lasers */\n"
+        "\t{ \"BATTLE.CAT\", 12, \"TacticalFX/TankFire\" }, /* auto/heavy/tank cannon */\n"
+        "\t{ \"BATTLE.CAT\", 13, \"TacticalFX/Rico\" },   /* AP shells hitting */\n"
+        "\t{ \"BATTLE.CAT\", 14, \"TacticalFX/Tank\" },   /* tank moving */\n"
+        "\t{ \"BATTLE.CAT\", 15, \"TacticalFX/Throb\" },  /* FLYING_SOUND, floaters */\n"
+        "\t{ \"BATTLE.CAT\", 16, \"TacticalFX/Throb\" },  /* celatid moving */\n"
+        "\t{ \"BATTLE.CAT\", 17, \"TacticalFX/Reload\" }, /* ITEM_RELOAD */\n"
+        "\t{ \"BATTLE.CAT\", 18, \"TacticalFX/Plasma\" }, /* plasma weapons */\n"
+        "\t{ \"BATTLE.CAT\", 19, \"TacticalFX/PlasHit\" }, /* laser/plasma hitting */\n"
+        "\t{ \"BATTLE.CAT\", 20, \"TacticalFX/ElecDoor\" }, /* SLIDING_DOOR_OPEN */\n"
+        "\t{ \"BATTLE.CAT\", 21, \"TacticalFX/ElecDoor\" }, /* SLIDING_DOOR_CLOSE */\n"
+        "\t{ \"BATTLE.CAT\", 22, \"TacticalFX/Rico\" },   /* bullets hitting */\n"
+        "\t{ \"BATTLE.CAT\", 23, \"TacticalFX/TankDie\" }, /* tanks, cyberdisc, sectopod dying */\n"
+        "\t{ \"BATTLE.CAT\", 24, \"TacticalFX/Met1\" },   /* steps: WALK_OFFSET + 2 * material */\n"
+        "\t{ \"BATTLE.CAT\", 25, \"TacticalFX/Met2\" },   /*   1 metal */\n"
+        "\t{ \"BATTLE.CAT\", 26, \"TacticalFX/Conc1\" },  /*   2 concrete */\n"
+        "\t{ \"BATTLE.CAT\", 27, \"TacticalFX/Conc2\" },\n"
+        "\t{ \"BATTLE.CAT\", 28, \"TacticalFX/Sand1\" },  /*   3.. a best guess */\n"
+        "\t{ \"BATTLE.CAT\", 29, \"TacticalFX/Sand2\" },\n"
+        "\t{ \"BATTLE.CAT\", 30, \"TacticalFX/Mud1\" },\n"
+        "\t{ \"BATTLE.CAT\", 31, \"TacticalFX/Mud2\" },\n"
+        "\t{ \"BATTLE.CAT\", 32, \"TacticalFX/Sand1\" },\n"
+        "\t{ \"BATTLE.CAT\", 33, \"TacticalFX/Sand2\" },\n"
+        "\t{ \"BATTLE.CAT\", 34, \"TacticalFX/Mud1\" },\n"
+        "\t{ \"BATTLE.CAT\", 35, \"TacticalFX/Mud2\" },\n"
+        "\t{ \"BATTLE.CAT\", 36, \"TacticalFX/Psionic\" }, /* psi attack */\n"
+        "\t{ \"BATTLE.CAT\", 37, \"TacticalFX/MindProb\" },\n"
+        "\t{ \"BATTLE.CAT\", 38, \"TacticalFX/Land\" },   /* ITEM_DROP */\n"
+        "\t{ \"BATTLE.CAT\", 39, \"TacticalFX/Throw\" },  /* ITEM_THROW */\n"
+        "\t{ \"BATTLE.CAT\", 40, \"TacticalFX/Cyber\" },  /* cyberdisc, hovertanks moving */\n"
+        "\t{ \"BATTLE.CAT\", 41, \"TacticalFX/Urgh1\" },  /* men dying */\n"
+        "\t{ \"BATTLE.CAT\", 42, \"TacticalFX/Urgh2\" },\n"
+        "\t{ \"BATTLE.CAT\", 43, \"TacticalFX/Urgh3\" },\n"
+        "\t{ \"BATTLE.CAT\", 44, \"TacticalFX/Fscr1\" },  /* women dying */\n"
+        "\t{ \"BATTLE.CAT\", 45, \"TacticalFX/Fscr2\" },\n"
+        "\t{ \"BATTLE.CAT\", 46, \"TacticalFX/Fscr3\" },\n"
+        "\t{ \"BATTLE.CAT\", 48, \"TacticalFX/ReapAtt\" }, /* reaper, zombie */\n"
+        "\t{ \"BATTLE.CAT\", 49, \"TacticalFX/CrysAtt\" }, /* chryssalid */\n"
+        "\t{ \"BATTLE.CAT\", 50, \"TacticalFX/SiliAtt\" }, /* silacoid */\n"
+        "\t{ \"BATTLE.CAT\", 51, \"TacticalFX/CelAtt\" }, /* celatid spit */\n"
+        "\t{ \"BATTLE.CAT\", 52, \"TacticalFX/Rocket\" }, /* rocket launchers */\n"
+        "\t{ \"BATTLE.CAT\", 53, \"TacticalFX/AlienRoc\" }, /* blaster launchers */\n"
+        "\t{ \"BATTLE.CAT\", 54, \"TacticalFX/StunRod\" },\n"
+        "};\n"
+        "\n"
+        "/* an 8SVX file as an 8-bit WAV in memory, for Sound::load */\n"
+        "static bool amigaSvxToWav_(const std::string &path, std::vector<unsigned char> &wav)\n"
+        "{\n"
+        "\tFILE *f = fopen(path.c_str(), \"rb\");\n"
+        "\tif (f == 0) return false;\n"
+        "\tstd::vector<unsigned char> d;\n"
+        "\tunsigned char buf[4096];\n"
+        "\tsize_t n;\n"
+        "\twhile ((n = fread(buf, 1, sizeof buf, f)) > 0) d.insert(d.end(), buf, buf + n);\n"
+        "\tfclose(f);\n"
+        "\tif (d.size() < 48 || memcmp(&d[0], \"FORM\", 4) != 0 || memcmp(&d[8], \"8SVX\", 4) != 0) return false;\n"
+        "\tunsigned long rate = 0, body = 0, blen = 0;\n"
+        "\tfor (size_t p = 12; p + 8 <= d.size(); )\n"
+        "\t{\n"
+        "\t\tunsigned long len = ((unsigned long)d[p + 4] << 24) | ((unsigned long)d[p + 5] << 16) | ((unsigned long)d[p + 6] << 8) | d[p + 7];\n"
+        "\t\tif (memcmp(&d[p], \"VHDR\", 4) == 0 && p + 22 <= d.size()) rate = ((unsigned long)d[p + 20] << 8) | d[p + 21];\n"
+        "\t\tif (memcmp(&d[p], \"BODY\", 4) == 0) { body = p + 8; blen = len; break; }\n"
+        "\t\tp += 8 + len + (len & 1);\n"
+        "\t}\n"
+        "\tif (rate == 0 || body == 0) return false;\n"
+        "\tif (body + blen > d.size()) blen = d.size() - body;\n"
+        "\twav.resize(44 + blen);\n"
+        "\tunsigned char *w = &wav[0];\n"
+        "\tunsigned long riff = 36 + blen;\n"
+        "\tmemcpy(w, \"RIFF\", 4); w[4] = riff; w[5] = riff >> 8; w[6] = riff >> 16; w[7] = riff >> 24;\n"
+        "\tmemcpy(w + 8, \"WAVEfmt \", 8);\n"
+        "\tw[16] = 16; w[17] = w[18] = w[19] = 0; w[20] = 1; w[21] = 0; w[22] = 1; w[23] = 0;\n"
+        "\tw[24] = rate; w[25] = rate >> 8; w[26] = 0; w[27] = 0;\n"
+        "\tw[28] = rate; w[29] = rate >> 8; w[30] = 0; w[31] = 0;\n"
+        "\tw[32] = 1; w[33] = 0; w[34] = 8; w[35] = 0;\n"
+        "\tmemcpy(w + 36, \"data\", 4); w[40] = blen; w[41] = blen >> 8; w[42] = blen >> 16; w[43] = blen >> 24;\n"
+        "\tfor (unsigned long i = 0; i < blen; ++i) w[44 + i] = (unsigned char)(d[body + i] + 128);   /* signed -> unsigned */\n"
+        "\treturn true;\n"
+        "}\n"
+        "\n"
+        "/* 6amV: the Amiga UFO's effects in place of the PC ones */\n"
+        "static void amigaUseAmigaSfx_(std::map<std::string, OpenXcom::SoundSet*> &sounds)\n"
+        "{\n"
+        "\tint done = 0, missing = 0;\n"
+        "\tfor (size_t i = 0; i < sizeof amigaSfxTable_ / sizeof amigaSfxTable_[0]; ++i)\n"
+        "\t{\n"
+        "\t\tconst AmigaSfx_ &e = amigaSfxTable_[i];\n"
+        "\t\tstd::map<std::string, OpenXcom::SoundSet*>::iterator s = sounds.find(e.set);\n"
+        "\t\tif (s == sounds.end() || s->second->getSound(e.index) == 0) continue;\n"
+        "\t\tstd::vector<unsigned char> wav;\n"
+        "\t\tstd::string path = OpenXcom::CrossPlatform::searchDataFile(std::string(\"UFO_AMIGA/\") + e.file + \".8svx\");\n"
+        "\t\tif (amigaSvxToWav_(path, wav) && s->second->getSound(e.index)->amigaReplace(&wav[0], (unsigned int)wav.size()))\n"
+        "\t\t\t++done;\n"
+        "\t\telse\n"
+        "\t\t\t++missing;\n"
+        "\t}\n"
+        "\tchar m[96];\n"
+        "\tsnprintf(m, sizeof m, \"sfx: %d Amiga sound effects in place of the PC ones, %d missing\", done, missing);\n"
+        "\tSDLmini_Log(m);\n"
+        "}\n"
+        "#endif\n"
+        "\n"
+        "void Mod::loadVanillaResources()\n{\n",
+        "amiga sfx table")))
+    results.append(("Mod.cpp (Amiga sound effects: includes)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "#include \"../Engine/Sound.h\"\n",
+        "#include \"../Engine/Sound.h\"\n"
+        "#ifdef __AMIGA__\n"
+        "#include <cstdio>\n"
+        "#include <cstring>\n"
+        "#endif\n",
+        "amiga sfx includes")))
+    results.append(("Mod.cpp (Amiga sound effects: use)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\tSDLmini_Log(\"mods: sounds loaded\");\n",
+        "\tif (Options::amigaSfx && !Options::mute) amigaUseAmigaSfx_(_sounds);   /* 6amV */\n"
+        "\tSDLmini_Log(\"mods: sounds loaded\");\n",
+        "amiga sfx use")))
+
 
     for root, _dirs, files in os.walk(src):
         for fn in files:

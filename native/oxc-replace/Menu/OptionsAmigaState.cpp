@@ -15,6 +15,7 @@
  *   Split movement calculation    Off / On            Options::amigaSplitWalk
  *   Display standard              Auto/PAL/NTSC       Options::amigaVideoMode
  *   Language from Workbench       Off / On            Options::amigaLangAuto
+ *   Sound effects                 PC game / Amiga     Options::amigaSfx
  */
 #include "OptionsAmigaState.h"
 #include "../Engine/Game.h"
@@ -38,6 +39,7 @@ enum
 	AMIGA_ROW_MUSIC,
 	AMIGA_ROW_MUSICQ,
 	AMIGA_ROW_MUSICSRC,
+	AMIGA_ROW_SFX,
 	AMIGA_ROW_VIDEO,
 	AMIGA_ROW_LANGAUTO,
 	AMIGA_ROW_SPLASH,
@@ -54,6 +56,7 @@ static const char *amigaRowLabel_[AMIGA_ROW_COUNT] =
 	"STR_AMIGA_MUSIC",
 	"STR_AMIGA_MUSIC_QUALITY",
 	"STR_AMIGA_MUSIC_SRC",
+	"STR_AMIGA_SFX",
 	"STR_AMIGA_VIDEO",
 	"STR_AMIGA_LANG_AUTO",
 	"STR_AMIGA_SPLASH"
@@ -69,13 +72,14 @@ static const char *amigaRowDesc_[AMIGA_ROW_COUNT] =
 	"STR_AMIGA_MUSIC_DESC",
 	"STR_AMIGA_MUSIC_QUALITY_DESC",
 	"STR_AMIGA_MUSIC_SRC_DESC",
+	"STR_AMIGA_SFX_DESC",
 	"STR_AMIGA_VIDEO_DESC",
 	"STR_AMIGA_LANG_AUTO_DESC",
 	"STR_AMIGA_SPLASH_DESC"
 };
 
 /* how many values each row cycles through */
-static const int amigaRowVals_[AMIGA_ROW_COUNT] = { 2, 2, 3, 2, 2, 3, 2, 2, 3, 2, 2 };
+static const int amigaRowVals_[AMIGA_ROW_COUNT] = { 2, 2, 3, 2, 2, 3, 2, 2, 2, 3, 2, 2 };
 
 /* Nothing is mixed live any more (the PC tunes are pre-rendered, which
  * always renders at high quality, and the Amiga tunes are four voices): the
@@ -97,6 +101,7 @@ static int amigaRowGet_(size_t row)
 	case AMIGA_ROW_MUSIC:     return Options::amigaMusic;
 	case AMIGA_ROW_MUSICQ:    return Options::amigaMusicQuality ? 1 : 0;
 	case AMIGA_ROW_MUSICSRC:  return Options::amigaMusicSource ? 1 : 0;
+	case AMIGA_ROW_SFX:       return Options::amigaSfx ? 1 : 0;
 	case AMIGA_ROW_VIDEO:     return Options::amigaVideoMode;
 	case AMIGA_ROW_LANGAUTO:  return Options::amigaLangAuto ? 1 : 0;
 	case AMIGA_ROW_SPLASH:    return Options::amigaSplashStyle ? 1 : 0;
@@ -118,6 +123,8 @@ static void amigaRowSet_(size_t row, int v)
 	/* The tunes are converted at the next start; the ones already in
 	 * user/music stay as they are until that folder is emptied. */
 	case AMIGA_ROW_MUSICSRC:  Options::amigaMusicSource = v; break;
+	/* The sounds are loaded while the game starts: the next start. */
+	case AMIGA_ROW_SFX:       Options::amigaSfx = (v == 1); break;
 	/* Only stored here. The screen is reopened on the way out of the
 	 * options screen (Screen::resetDisplay -> SDL_SetVideoMode), never
 	 * while the row is being cycled. */
@@ -150,6 +157,8 @@ static const char *amigaRowValue_(size_t row, int v)
 		return v == 1 ? "STR_AMIGA_MUSIC_SRC_ADLIB" : "STR_AMIGA_MUSIC_SRC_SAMPLES";
 	case AMIGA_ROW_SPLASH:
 		return v == 1 ? "STR_AMIGA_SPLASH_RETRO" : "STR_AMIGA_SPLASH_MODERN";
+	case AMIGA_ROW_SFX:
+		return v == 1 ? "STR_AMIGA_MUSIC_LIVE" : "STR_AMIGA_MUSIC_PRE";   /* Amiga / PC game */
 	case AMIGA_ROW_VIDEO:
 		return v == 2 ? "STR_AMIGA_VIDEO_NTSC"
 		     : (v == 1 ? "STR_AMIGA_VIDEO_PAL" : "STR_AMIGA_VIDEO_AUTO");
