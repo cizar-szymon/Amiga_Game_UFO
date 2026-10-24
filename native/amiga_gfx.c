@@ -46,6 +46,7 @@
 #include <devices/input.h>
 #include <devices/inputevent.h>
 #include <string.h>
+#include <stdarg.h>
 #include <stdio.h>
 
 /* cybergraphics.library is not part of the bebbo NDK, so the official CGX
@@ -66,9 +67,29 @@ struct Library *CyberGfxBase;
  * AmigaDOS 3.1 shell can only redirect stdout, so a crash or a hang leaves no
  * trace at all. Point stderr at a file ourselves and make it UNBUFFERED, so the
  * last line written before a hang is actually on disk. */
+/* libnix: the Workbench startup message, NULL when started from a Shell */
+extern void *_WBenchMsg;
+
+/* Every diagnostic line of this file goes through here: to stdout from a
+ * Shell, nowhere from the icon (see amigagfx_log). */
+static void ag_printf(const char *fmt, ...)
+{
+	va_list ap;
+	if (_WBenchMsg != NULL) return;
+	va_start(ap, fmt);
+	vfprintf(stdout, fmt, ap);
+	va_end(ap);
+}
+
 void amigagfx_log(const char *msg)
 {
-	fprintf(stdout, "amiga: %s\n", msg);
+	/* Started from its icon the program has no Shell, and libnix opens a
+	 * console window (CON://///AUTO/CLOSE/WAIT) the first time anything goes
+	 * to stdout: every log line popped up a window on the Workbench. The
+	 * lines are in PROGDIR:sdlmini.log anyway. (Pointing libnix's __stdiowin
+	 * at NIL: instead stopped the game starting from the icon at all.) */
+	if (_WBenchMsg != NULL) return;
+	ag_printf("amiga: %s\n", msg);
 	fflush(stdout);
 }
 
@@ -598,7 +619,7 @@ static void probe_rtg_lock(void)
 	}
 	if (base == NULL || depth != 8UL || pixfmt != PIXFMT_LUT8 ||
 	    bpr < (ULONG)g_width) {
-		fprintf(stdout, "amiga: RTG: lock gave depth=%lu pixfmt=%lu bpr=%lu base=%p"
+		ag_printf("amiga: RTG: lock gave depth=%lu pixfmt=%lu bpr=%lu base=%p"
 		                " - not a usable LUT8 surface, using WriteLUTPixelArray\n",
 		        (unsigned long)depth, (unsigned long)pixfmt,
 		        (unsigned long)bpr, base);
@@ -607,7 +628,7 @@ static void probe_rtg_lock(void)
 	}
 
 	g_rtg_method = RTG_METHOD_LOCK;
-	fprintf(stdout, "amiga: RTG: direct LUT8 bitmap access, bpr %lu (chunky pitch %d)"
+	ag_printf("amiga: RTG: direct LUT8 bitmap access, bpr %lu (chunky pitch %d)"
 	                " - no chunky-to-planar at all\n",
 	        (unsigned long)bpr, g_width);
 	fflush(stdout);
@@ -839,7 +860,7 @@ static int open_screen_aga(int w, int h, ULONG quiet, ULONG title, int depth)
 		                          (ULONG)OSCAN_MAX,
 		                          TAG_END);
 		if (overscan) {
-			fprintf(stdout, "amiga: %dx%d exceeds the standard clip for mode $%08lx"
+			ag_printf("amiga: %dx%d exceeds the standard clip for mode $%08lx"
 			                " - opening with OSCAN_MAX\n",
 			        w, h, (unsigned long)modeid);
 			fflush(stdout);
@@ -874,7 +895,7 @@ static int open_screen_aga(int w, int h, ULONG quiet, ULONG title, int depth)
 	if (g_screen == NULL) {
 		FreeMem(g_chip, g_planesize * depth); g_chip = NULL;
 		if (depth == DEPTH_EHB) {
-			fprintf(stdout, "amiga: EHB: OpenScreen refused mode $%08lx at %dx%d"
+			ag_printf("amiga: EHB: OpenScreen refused mode $%08lx at %dx%d"
 			                " - falling back to 8 bitplanes\n",
 			        (unsigned long)g_want_modeid, w, h);
 			fflush(stdout);
@@ -914,7 +935,7 @@ static int open_screen_rtg(int w, int h, ULONG quiet, ULONG title)
 	ULONG modeid = rtg_best_mode(w, h);
 
 	if (modeid == (ULONG)INVALID_ID) {
-		fprintf(stdout, "amiga: RTG: no 8-bit mode for %dx%d - falling back to AGA\n", w, h);
+		ag_printf("amiga: RTG: no 8-bit mode for %dx%d - falling back to AGA\n", w, h);
 		fflush(stdout);
 		return 5;
 	}
@@ -934,7 +955,7 @@ static int open_screen_rtg(int w, int h, ULONG quiet, ULONG title)
 	                          SA_DisplayID, modeid,
 	                          TAG_END);
 	if (g_screen == NULL) {
-		fprintf(stdout, "amiga: RTG: OpenScreen refused mode $%08lx at %dx%d"
+		ag_printf("amiga: RTG: OpenScreen refused mode $%08lx at %dx%d"
 		                " - falling back to AGA\n", (unsigned long)modeid, w, h);
 		fflush(stdout);
 		return 6;
@@ -1382,7 +1403,7 @@ static int finish_window_open(void)
 	}
 
 	ActivateWindow(g_window);
-	fprintf(stdout, "amiga: window open on the Workbench screen,"
+	ag_printf("amiga: window open on the Workbench screen,"
 	                " chunky %dx%d (pitch %d) - handing control to OpenTTD\n",
 	        g_width, g_height, g_pitch);
 	fflush(stdout);
@@ -1399,7 +1420,7 @@ static int amigagfx_open_(int w, int h, int show_bar, int backend)
 	ULONG title = show_bar ? TRUE  : FALSE;
 	int err;
 
-	fprintf(stdout, "amiga: amigagfx_open(%d,%d) wb_bar=%d backend=%s\n",
+	ag_printf("amiga: amigagfx_open(%d,%d) wb_bar=%d backend=%s\n",
 	        w, h, show_bar,
 	        backend == AMIGAGFX_BACKEND_WB  ? "WINDOW" :
 	        backend == AMIGAGFX_BACKEND_RTG ? "RTG" :
@@ -1482,7 +1503,7 @@ static int amigagfx_open_(int w, int h, int show_bar, int backend)
 				bar = (int)g_screen->BarHeight + 1;   /* same mode, same font */
 				g_yoff   = bar;
 				g_height = h;
-				fprintf(stdout, "amiga: wb bar: screen %dx%d, full game area %dx%d at y=%d\n",
+				ag_printf("amiga: wb bar: screen %dx%d, full game area %dx%d at y=%d\n",
 				        w, h + bar, g_width, g_height, g_yoff);
 			} else {
 				/* taller refused - reopen at the original height and reduce */
@@ -1495,11 +1516,11 @@ static int amigagfx_open_(int w, int h, int show_bar, int backend)
 				bar = (int)g_screen->BarHeight + 1;
 				g_yoff   = bar;
 				g_height = h - bar;
-				fprintf(stdout, "amiga: wb bar: taller screen refused, reduced game area %dx%d at y=%d\n",
+				ag_printf("amiga: wb bar: taller screen refused, reduced game area %dx%d at y=%d\n",
 				        g_width, g_height, g_yoff);
 			}
 		} else {
-			fprintf(stdout, "amiga: wb bar height %d implausible for %d lines - bar ignored\n",
+			ag_printf("amiga: wb bar height %d implausible for %d lines - bar ignored\n",
 			        bar, h);
 		}
 		fflush(stdout);
@@ -1521,18 +1542,18 @@ static int amigagfx_open_(int w, int h, int show_bar, int backend)
 		 * prints the pixel dimensions. */
 		ULONG got = GetVPModeID(&g_screen->ViewPort);
 		if (g_backend == AMIGAGFX_BACKEND_RTG) {
-			fprintf(stdout, "amiga: RTG screen open %dx%d depth 8 (no Chip RAM, no c2p)\n", w, h);
-			fprintf(stdout, "amiga: modeid wanted $%08lx got $%08lx  blit=%s\n",
+			ag_printf("amiga: RTG screen open %dx%d depth 8 (no Chip RAM, no c2p)\n", w, h);
+			ag_printf("amiga: modeid wanted $%08lx got $%08lx  blit=%s\n",
 			        (unsigned long)g_want_modeid, (unsigned long)got,
 			        g_rtg_method == RTG_METHOD_LOCK ? "LockBitMap+memcpy"
 			                                        : "WriteLUTPixelArray");
 		} else {
-			fprintf(stdout, "amiga: %s screen open %dx%d depth %d, bpr %d,"
+			ag_printf("amiga: %s screen open %dx%d depth %d, bpr %d,"
 			                " chip %lu KB\n",
 			        g_backend == AMIGAGFX_BACKEND_EHB ? "EHB" : "AGA",
 			        w, h, g_depth, g_bpr,
 			        (unsigned long)((g_planesize * g_depth) >> 10));
-			fprintf(stdout, "amiga: modeid wanted $%08lx got $%08lx  %s%s%s  [%s]\n",
+			ag_printf("amiga: modeid wanted $%08lx got $%08lx  %s%s%s  [%s]\n",
 			        (unsigned long)g_want_modeid, (unsigned long)got,
 			        (got & HIRES_KEY) ? "HIRES " : "LORES ",
 			        (got & 0x0004) ? "INTERLACED" : "non-interlaced",
@@ -1576,7 +1597,7 @@ static int amigagfx_open_(int w, int h, int show_bar, int backend)
 	/* WFLG_ACTIVATE alone did not reliably give a backdrop window key focus -
 	 * keyboard events never arrived. Ask explicitly. */
 	ActivateWindow(g_window);
-	fprintf(stdout, "amiga: window open, IDCMP active - handing control to OpenTTD\n");
+	ag_printf("amiga: window open, IDCMP active - handing control to OpenTTD\n");
 	return 0;
 }
 
@@ -2207,7 +2228,7 @@ void amigagfx_blit(int x, int y, int w, int h)
 
 		g_blits++;
 		if (g_blits == 1 || (g_verbose && (g_blits % 200) == 0)) {
-			fprintf(stdout, "amiga: window blit #%lu  %dx%d at %d,%d  %s\n",
+			ag_printf("amiga: window blit #%lu  %dx%d at %d,%d  %s\n",
 			        g_blits, x2 - x, y2 - y, x, y,
 			        g_win_direct ? "WriteLUTPixelArray" :
 			        (CyberGfxBase != NULL ? "pens+WritePixelArray(LUT8)"
@@ -2254,7 +2275,7 @@ void amigagfx_blit(int x, int y, int w, int h)
 
 		g_blits++;
 		if (g_blits == 1 || (g_verbose && (g_blits % 200) == 0)) {
-			fprintf(stdout, "amiga: rtg blit #%lu  %dx%d at %d,%d\n",
+			ag_printf("amiga: rtg blit #%lu  %dx%d at %d,%d\n",
 			        g_blits, x2 - x, y2 - y, x, y);
 			fflush(stdout);
 		}
@@ -2266,7 +2287,7 @@ void amigagfx_blit(int x, int y, int w, int h)
 
 		g_blits++;
 		if (g_blits == 1 || (g_verbose && (g_blits % 200) == 0)) {
-			fprintf(stdout, "amiga: ehb blit #%lu  %dx%d at %d,%d  %s\n",
+			ag_printf("amiga: ehb blit #%lu  %dx%d at %d,%d  %s\n",
 			        g_blits, x2 - x, y2 - y, x, y,
 			        (x == 0 && x2 == g_width) ? "direct" : "via scratch band");
 			fflush(stdout);
@@ -2294,7 +2315,7 @@ void amigagfx_blit(int x, int y, int w, int h)
 	 * whole session, so it now needs "-v amiga:verbose". */
 	g_blits++;
 	if (g_blits == 1 || (g_verbose && (g_blits % 200) == 0)) {
-		fprintf(stdout, "amiga: blit #%lu  %dx%d at %d,%d\n",
+		ag_printf("amiga: blit #%lu  %dx%d at %d,%d\n",
 		        g_blits, (int)args.w, (int)args.h, (int)args.x, (int)args.y);
 		fflush(stdout);
 	}
@@ -2378,7 +2399,7 @@ int amigagfx_poll(AmigaGfxEvent *ev)
 			/* Logged unconditionally, unlike the per-frame chatter: a resize is
 			 * a rare, user-driven event, and it is the one thing about window
 			 * mode that cannot be checked from a screenshot after the fact. */
-			fprintf(stdout, "amiga: window resized to %dx%d (pitch stays %d)\n",
+			ag_printf("amiga: window resized to %dx%d (pitch stays %d)\n",
 			        nw, nh, g_pitch);
 			fflush(stdout);
 			break;

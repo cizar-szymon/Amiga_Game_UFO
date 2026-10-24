@@ -9321,6 +9321,9 @@ def main():
         '#define AMIGA_BUILD_ID "unknown"\n'
         '#define AMIGA_BUILD_VER "0 (unknown)"\n'
         '#endif\n'
+        '#ifndef AMIGA_BUILD_STR\n'
+        '#define AMIGA_BUILD_STR "0.0"   /* <major>.<build>, from docker/build.ps1 */\n'
+        '#endif\n'
         '/* "Version <file>" in the Shell: the same build number */\n'
         'static const char amigaVersion_[] __attribute__((used)) = "$VER: AmiXcom " AMIGA_BUILD_VER;\n'
         'extern "C" void SDLmini_Log(const char *msg);\n'
@@ -9334,7 +9337,8 @@ def main():
         '\t{\n'
         '\t\tconst int b_ = amigagfx_backend();\n'
         '\t\ttitle << L"AmiXcom\\x02Version "   /* \\x02: a new line, in the small font */\n'
-        '\t\t\t<< (b_ == AMIGAGFX_BACKEND_RTG ? L"RTG " : b_ == AMIGAGFX_BACKEND_WB ? L"WB " : L"AGA ") << AMIGA_BUILD_NUM;\n'
+        '\t\t\t<< (b_ == AMIGAGFX_BACKEND_RTG ? L"RTG " : b_ == AMIGAGFX_BACKEND_WB ? L"WB " : L"AGA ")\n'
+        '\t\t\t<< Language::utf8ToWstr(AMIGA_BUILD_STR);   /* 0.82: 0 = beta */\n'
         '\t\tstatic bool logged_ = false;\n'
         '\t\tif (!logged_) { logged_ = true; SDLmini_Log("build: " AMIGA_BUILD_ID); }\n'
         '\t}\n'
@@ -11125,7 +11129,7 @@ def main():
         os.path.join(src, "main.cpp"),
         '\ttitle << "AmiXcom 68K " << OPENXCOM_VERSION_SHORT << OPENXCOM_VERSION_GIT;\n',
         '#ifdef __AMIGA__\n'
-        '\ttitle << "AmiXcom " << AMIGA_BUILD_NUM;   /* the screen title bar, with amigaAppBar */\n'
+        '\ttitle << "AmiXcom " << AMIGA_BUILD_STR;   /* the screen title bar, with amigaAppBar */\n'
         '#else\n'
         '\ttitle << "AmiXcom 68K " << OPENXCOM_VERSION_SHORT << OPENXCOM_VERSION_GIT;\n'
         '#endif\n',
@@ -11142,6 +11146,9 @@ def main():
         '#endif\n'
         '#ifndef AMIGA_BUILD_NUM\n'
         '#define AMIGA_BUILD_NUM 0\n'
+        '#endif\n'
+        '#ifndef AMIGA_BUILD_STR\n'
+        '#define AMIGA_BUILD_STR "0.0"\n'
         '#endif\n'
         '#endif\n',
         "main build number include")))
