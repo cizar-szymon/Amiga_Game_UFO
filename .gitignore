@@ -28,3 +28,7 @@
 *.sav
 *.asav
 raporty/report_img/
+
+# release archives and their staging (tools/make_release.py)
+/releases/
+__pycache__/

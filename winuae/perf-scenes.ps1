@@ -8,11 +8,15 @@
 #          320x200 dialogs are centred, so their buttons move by +160,+100
 #   mixed - amigaNativeScale: Geoscape on a 320x200 screen, battles on a
 #          native 640x400 one (the screen switches between them)
+#   w480 - the "WARP RTG 320x200 / 640x480" entry: the same, battles on a
+#          native 640x480 screen (dialogs centred: +160,+140)
 function Get-PerfScript([string]$Scene, [string]$Res) {
     if ($Res -eq 'mixed') { $Res = if ($Scene -in 'geo','geohold') { '320' } else { 'n640' } }
+    if ($Res -eq 'w480') { $Res = if ($Scene -in 'geo','geohold') { '320' } else { 'n480' } }
     function P([int]$x, [int]$y) {
         if ($Res -eq '640') { "$($x * 2) $($y * 2 + 40)" }
         elseif ($Res -eq 'n640') { "$($x + 160) $($y + 100)" }
+        elseif ($Res -eq 'n480') { "$($x + 160) $($y + 140)" }
         else { "$x $y" }
     }
     $s = New-Object System.Collections.Generic.List[string]
@@ -43,8 +47,8 @@ function Get-PerfScript([string]$Scene, [string]$Res) {
         $s.Add("key tab"); $s.Add("wait 3000"); $s.Add("move $(P 160 70)")
         # Edge scrolling starts within 5 px of the screen edge (Camera::
         # SCROLL_BORDER) - raw screen coordinates, not the dialog offset of P()
-        $sw = if ($Res -eq 'n640') { 640 } else { 320 }
-        $sh = if ($Res -eq 'n640') { 400 } else { 200 }
+        $sw = if ($Res -in 'n640','n480') { 640 } else { 320 }
+        $sh = if ($Res -eq 'n640') { 400 } elseif ($Res -eq 'n480') { 480 } else { 200 }
         # back and forth, 1.5 s each way: the camera stops at the map's edge,
         # so one long push would scroll for a moment and then stand still
         $ym = [int]($sh * 0.35)
@@ -120,6 +124,8 @@ function Get-ModeOptions([string]$Res) {
         '640'   { return @(@('displayWidth', 640), @('displayHeight', 480), @('geoscapeScale', 0), @('battlescapeScale', 0)) }
         'n640'  { return @(@('displayWidth', 640), @('displayHeight', 400), @('geoscapeScale', 5), @('battlescapeScale', 5),
                            @('nonSquarePixelRatio', 'false')) }
+        'w480'  { return @(@('displayWidth', 640), @('displayHeight', 480), @('geoscapeScale', 0), @('battlescapeScale', 5),
+                           @('nonSquarePixelRatio', 'false'), @('amigaNativeScale', 'true')) }
         'mixed' { return @(@('displayWidth', 640), @('displayHeight', 400), @('geoscapeScale', 0), @('battlescapeScale', 2),
                            @('nonSquarePixelRatio', 'false'), @('amigaNativeScale', 'true')) }
         default { return @(@('displayWidth', 320), @('displayHeight', 200), @('geoscapeScale', 0), @('battlescapeScale', 0)) }

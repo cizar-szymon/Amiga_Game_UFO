@@ -227,7 +227,7 @@ def img(path, w=180):
 
 story = []
 story += [P("AmiXcom na RTG – poprawki i pomiary", "h1"),
-          P("Gałąź <b>feat/battle-scroll-640</b>, commity z 20–23.10.2026. Wszystkie liczby zmierzone na prawdziwych "
+          P("Gałąź <b>feat/battle-scroll-640</b>, commity z 20–24.10.2026, wydanie 0.86. Wszystkie liczby zmierzone na prawdziwych "
             "Amigach przez AmiAgenta (sondy <i>amigaPerfLog</i>, sceny sterowane skryptem), nie w emulatorze."),
           P("<b>Maszyny:</b> Amiga 1 – A1200, Warp1260 (68060), AmigaOS 3.2, Picasso96 2.455; Amiga 2 – A4000, "
             "Warp4070 (68060), AmigaOS 3.2. Obie karty mają tę samą grafikę RTG (FPGA), wyniki obu maszyn są zbliżone "
@@ -295,6 +295,14 @@ story.append(table([
      "Bez mierzalnego zysku (8,5 → 8,3 s); zostaje, bo wynik ten sam", "A4000 / Warp4070"],
     ["b61e009", "23.10", "Szybki alokator pamięci (klasy rozmiarów) zamiast puli libnix; zwalnia pamięć przy wyjściu",
      "Budowanie autozapisu 8,3 → 0,14 s; rozbiór zapisu 4,9 → 0,6 s; start ~17 s krótszy", "A4000 / Warp4070"],
+    ["eceb867", "24.10", "Options → Amiga: mniej pozycji, po polsku, na górze karta Warp (CARD / FIRMWARE / CPU CLOCK z WarpTool), POKAZUJ FPS; w Options → Video rozdzielczości zamiast nazw skal",
+     "Wartości nie wychodzą poza okno (F10 bug000); WarpTool liczy się w tle wczytywania (~1,5 s)", "A1200 / Warp1260"],
+    ["3ace07c", "24.10", "Intro: odtwarzacz FLI czyta plik poprawnie na 68k; bez 10 s czarnego ekranu, gdy intro się nie da odtworzyć; większy bufor dźwięku",
+     "Czarny ekran 10 s → 0; intro 890 klatek / 93 s; 22 ucięte dźwięki → 0", "A1200 / Warp1260"],
+    ["ed20568", "24.10", "Intro z oryginalnym dźwiękiem gra w trakcie wczytywania gry; Esc / klik: obraz tytułowy z „LOADING nn %”",
+     "Ok. 30 s wczytywania schowane w intro; potwierdzone przez gracza", "A1200 / Warp1260"],
+    ["7f3a5a0", "24.10", "Numer wersji 0.&lt;numer&gt; (0 = beta); bez okna konsoli na Workbenchu przy starcie z ikony",
+     "„Version RTG 0.86”; okno konsoli już się nie otwiera", "A1200 / Warp1260"],
 ], [17, 11, 62, 60, 30]))
 story.append(Spacer(1, 6))
 story.append(img(img_battle, 175))
@@ -607,11 +615,28 @@ story.append(P("Zakresy (np. 25–31 kl./s) to rozrzut między oknami pomiarowym
                "karty graficzne są takie same.",
                "small"))
 
+story.append(Spacer(1, 8))
+story.append(KeepTogether([P("16. Bitwa w 640×480 (WARP RTG 320x200 / 640x480) – porównanie z 640×400", "h2"),
+    P("Amiga 1 (A1200 / Warp1260), build 95 (wariant FPU, szybki alokator), obie rozdzielczości tego samego dnia, "
+      "te same sceny (perf-real.ps1: bitwa z amigaAutoBattle, sondy amigaPerfLog co 100 klatek). 640×480 to o 20% więcej "
+      "pikseli niż 640×400."),
+    table([
+        ["Scena", "640×400", "640×480", "Różnica"],
+        ["bitwa stoi", "50 kl./s (9,9 ms)", "50 kl./s (10,2 ms)", "bez różnicy"],
+        ["ruch kursora", "47 kl./s (14,3 ms)", "46 kl./s (15,1 ms)", "−2% kl./s"],
+        ["ciągłe przewijanie (lewo–prawo)", "37 kl./s (23,5 ms)", "34 kl./s (26,5 ms)", "−8% kl./s"],
+        ["przewijanie klawiszami (krok po kroku)", "30–32 kl./s (22,1–24,2 ms)", "25–28 kl./s (27,0–30,2 ms)", "−14% kl./s"],
+        ["weryfikacja klatek (amigaFrameSkip)", "0 różnic", "0 różnic", ""],
+    ], [62, 40, 40, 38]),
+    P("Koszt rośnie głównie przy dorysowaniu terenu (przewijanie klawiszami: 4,8–6,5 → 6,8–10,0 ms na klatkę) i wysyłaniu "
+      "większego ekranu na kartę; logika gry bez zmian. Marszu i strzelania w 640×480 nie mierzono (zapisy misja3 i misja4 "
+      "są na Amidze 2). Ciągłe przewijanie w 640×400 (37 kl./s, 23,5 ms) daje ten sam wynik co pomiar z 8ff2ed4.", "small")]))
+
 def footer(c, d):
     c.saveState()
     c.setFont("Arial", 7.5)
     c.setFillColor(colors.HexColor("#666666"))
-    c.drawString(15 * mm, 9 * mm, "AmiXcom – poprawki RTG, gałąź feat/battle-scroll-640, 23.10.2026")
+    c.drawString(15 * mm, 9 * mm, "AmiXcom – poprawki RTG, gałąź feat/battle-scroll-640, 24.10.2026")
     c.drawRightString(195 * mm, 9 * mm, "str. %d" % d.page)
     c.restoreState()
 

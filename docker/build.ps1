@@ -23,7 +23,10 @@ $bnum  = (git -C $repo rev-list --count HEAD).Trim()
 $bhash = (git -C $repo rev-parse --short HEAD).Trim()
 if (git -C $repo status --porcelain --untracked-files=no) { $bhash += '+' }
 $bdate = (Get-Date).ToString('d.M.yyyy')   # the date format Version expects
-$bid = "#define AMIGA_BUILD_NUM $bnum`n#define AMIGA_BUILD_ID `"$bnum $bhash`"`n#define AMIGA_BUILD_VER `"$bnum ($bdate)`"`n"
+# The version shown is <major>.<build>: 0 while it is a beta, 1 once official.
+$bmajor = 0
+$bver = "$bmajor.$bnum"
+$bid = "#define AMIGA_BUILD_NUM $bnum`n#define AMIGA_BUILD_STR `"$bver`"`n#define AMIGA_BUILD_ID `"$bver $bhash`"`n#define AMIGA_BUILD_VER `"$bver ($bdate)`"`n"
 [IO.File]::WriteAllText("$repo\native\amiga_buildid.h", $bid)
 "build number $bnum ($bhash)"
 

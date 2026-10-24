@@ -4,7 +4,7 @@
 #   .\perf-real.ps1 -Scene battle -Res 320 [-Binary openxcom-rtg] [-Tag r1]
 param(
     [Parameter(Mandatory=$true)][ValidateSet('battle','geo','geoq','scroll','inv','geohold')][string]$Scene,
-    [Parameter(Mandatory=$true)][ValidateSet('320','640','n640','mixed')][string]$Res,
+    [Parameter(Mandatory=$true)][ValidateSet('320','640','n640','mixed','w480')][string]$Res,
     [string]$Binary = 'openxcom-rtg',
     [string]$Tag = '',
     [string]$Dir = 'WorkSD:AmiXcom',

@@ -122,6 +122,19 @@ Wypełniać na bieżąco. Wpisać konfigurację, wersję i datę.
 
 **Po optymalizacjach 1 (diff-copy długimi słowami) i 2 (pomijanie niezmienionych klatek), Warp, 640×400:** bitwa bezruch 49 kl./s, kursor 26, przewijanie 27–29; Geoscape bezruch 36, obrót 20, zoom 10 (szczegóły: `docs/hires-analysis.md`). **Uwaga:** „Geoscape – bezruch” w tych tabelach to ekran wyboru bazy przy **zatrzymanym czasie**, a bitwa to początek misji. **Prawdziwy Geoscape przy czasie 5 s (zapis gracza): 14 kl./s bez zmian → 16–17 kl./s po optymalizacjach** – tyle widzi gracz.
 
+**Stan 2026-10-24 (wydanie 0.86, Warp1260, ten sam build i dzień):**
+
+| Scena (bitwa) | natywne 640×400 | natywne 640×480 |
+|---|---|---|
+| bezruch | 50 kl./s (9,9 ms) | 50 kl./s (10,2 ms) |
+| ruch kursora | 47 kl./s (14,3 ms) | 46 kl./s (15,1 ms) |
+| ciągłe przewijanie | 37 kl./s (23,5 ms) | 34 kl./s (26,5 ms) |
+| przewijanie klawiszami | 30–32 kl./s | 25–28 kl./s |
+
+Marsz ~28 kl./s (640×400, Warp4070); Geoscape 49 kl./s w 320×200 (tryb „WARP RTG”). Obie
+pozycje WARP w Options → Video; 640×480 natywnie (już nie skalowanie z pasami). Fazy 2–5
+zrobione; szczegóły w `raporty/AmiXcom-poprawki-RTG.pdf`.
+
 **Faza 0 zrobiona: `docs/hires-analysis.md`.** Natywne 640×400 działa w porcie bez zmian w kodzie (OpenXcom: `displayWidth/Height` 640×400 + `geoscapeScale`/`battlescapeScale` = 5). Praca przesuwa się z „zrobić” na „przyspieszyć”: pełne czyszczenie i porównanie ekranu w każdej klatce, glob i kopia mapy w bitwie.
 
 Konfiguracja: Warp1260X, 68060 rev 6 (zegar według użytkownika 100 MHz, nie sprawdzony programowo), AmigaOS 3.2 (Kickstart 47.96), monitor CSGFX, P96 2.455, CGX 42.7; dane UFO (DOS), muzyka wyłączona, `amigaPerfLog: 1`, binarka `openxcom-rtg`. Narzędzie: `winuae/perf-real.ps1` (AmiAgent + autoinput), logi w `winuae/perf-real/`. Gra ma limit 50 kl./s.

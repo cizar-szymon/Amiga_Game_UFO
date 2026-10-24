@@ -15,14 +15,14 @@ Odpowiadaj użytkownikowi **po polsku**. Kod, komentarze, opisy commitów i PR-�
 
 | | |
 |---|---|
-| Akcelerator | Warp1260X, **MC68060 @ 100 MHz** z FPU (koprocesora ARM na płycie **nie używamy**) |
+| Akcelerator | Amiga 1: A1200 + Warp1260X, **MC68060 @ 100 MHz** z FPU, firmware 3.054 (WarpTool); Amiga 2: A4000 + Warp4070 (060). Koprocesora ARM **nie używamy** |
 | System | **AmigaOS 3.2.2.1** |
-| Grafika | karta RTG — **model: TODO (uzupełnić)**, sterownik: Picasso96 / CyberGraphX — **TODO** |
-| Workbench | RTG, ok. 640×400 lub wyżej |
-| Sieć na Amidze | **TODO**: czy jest stos TCP/IP (Roadshow?), udział sieciowy lub FTP |
+| Grafika | RTG wbudowane w kartę Warp (FPGA, to samo na obu Amigach), Picasso96 2.455, HDMI |
+| Workbench | RTG 1280×1024 (Amiga 1) |
+| Sieć na Amidze | tak: stos TCP/IP i AmiAgent na obu (Amiga 1 przez VPN – bywa wolna, Amiga 2 w LAN); wgrywanie buildów i pobieranie logów przez `tools/amiga_remote.py` |
 | Locale | polskie ustawienia Workbencha (przecinek dziesiętny!) |
 
-Właściwa binarka dla tej maszyny to **`openxcom-rtg-fpu`**.
+Właściwa binarka dla tej maszyny to **`UFO`** (wariant `-fpu-fm`: RTG, FPU, szybki alokator) w `Work:AmiXcom` (Amiga 1) / `WorkSD:AmiXcom` (Amiga 2); od 0.86 wydanie ma też `UFO-noFPU`.
 
 ## Środowisko pracy (PC)
 
@@ -53,7 +53,7 @@ Właściwa binarka dla tej maszyny to **`openxcom-rtg-fpu`**.
 ### Na prawdziwej Amidze (robi to użytkownik)
 - Przygotuj paczkę testową: binarkę, zmienione pliki i krótką instrukcję po polsku, co kliknąć, co obserwować i które logi odesłać.
 - Użytkownik odsyła `sdlmini.log`, `user/openxcom.log`, `user/options.cfg` i ewentualnie `hang.log`.
-- Jeśli Amiga jest w sieci (patrz TODO wyżej), zautomatyzuj kopiowanie buildów i pobieranie logów.
+- Amiga jest w sieci: kopiowanie buildów i pobieranie logów robi Claude przez AmiAgenta (patrz wyżej).
 - **Wynik z WinUAE nie jest dowodem dla prawdziwego sprzętu.** Szczególnie dotyczy to timingów, audio.device, FPU 68060 i sterownika RTG.
 
 ## Zasady pracy (styl upstreamu)
