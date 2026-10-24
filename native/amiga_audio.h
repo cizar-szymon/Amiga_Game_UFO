@@ -36,6 +36,8 @@ int AmigaAudio_Open(void);
 /* Abort any playing sound, free the channels, close the device.
  * Safe to call at any time, including after a failed/absent Open. */
 void AmigaAudio_Close(void);
+/* 1 while open (the loading-time intro closes it and opens it again). */
+int AmigaAudio_IsOpen(void);
 
 /* Allocate/free a sample buffer Paula DMA can read: Chip RAM, word-aligned.
  * Returns NULL when Chip RAM is exhausted. FreeSample(NULL) is a no-op. */

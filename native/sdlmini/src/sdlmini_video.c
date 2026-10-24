@@ -436,7 +436,14 @@ int SDL_SetColors(SDL_Surface *surface, SDL_Color *colors, int firstcolor, int n
  * was suppressed and reconvert the whole frame. */
 void SDLmini_SplashFinish(void)
 {
+	extern int amiga_intro_played(void);
 	AmigaSplash_End();
+	if (amiga_intro_played()) {
+		/* Esc and the clicks that skipped the intro reached our window too:
+		 * drop them, or one lands on a main menu button */
+		SDL_Event ev;
+		while (SDL_PollEvent(&ev)) ;
+	}
 	amiga_watchdog_start();   /* loading is over: from here a long silence is news */
 	if (s_screen != NULL && s_screen->format->palette != NULL) {
 		SDL_SetColors(s_screen, s_screen->format->palette->colors, 0,

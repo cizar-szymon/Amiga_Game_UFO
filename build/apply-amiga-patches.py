@@ -12660,6 +12660,38 @@ def main():
         "\t}\n",
         "flc sleep between frames")))
 
+    # 6amM. The intro plays WHILE the game loads (native/amiga_intro.c, the
+    #       player's design): the splash process plays UFOINT.FLI instead of
+    #       the loading picture, Esc or a click jumps to the title picture,
+    #       which stays until the game is loaded, with "LOADING nn %". The
+    #       intro's own sound plays (AmigaIntro_Settings: volume, mute, the
+    #       music setting, where the pre-rendered tunes are). AmigaSplash_Intro is set
+    #       with the splash style, before the first screen opens; StartState
+    #       then does not play the intro a second time.
+    results.append(("Screen.cpp (intro while loading extern)", edit(
+        os.path.join(src, "Engine", "Screen.cpp"),
+        "extern \"C\" int AmigaSplash_Style;    /* 0 modern, 1 retro (amiga_splash.c) */\n",
+        "extern \"C\" int AmigaSplash_Style;    /* 0 modern, 1 retro (amiga_splash.c) */\n"
+        "extern \"C\" int AmigaSplash_Intro;    /* the intro while loading (6amM) */\n"
+        "extern \"C\" void AmigaIntro_Settings(int mute, int music, int musicVol, int soundVol, const char *userFolder);\n",
+        "intro while loading extern")))
+    results.append(("Screen.cpp (intro while loading)", edit(
+        os.path.join(src, "Engine", "Screen.cpp"),
+        "\t\tAmigaSplash_Style = Options::amigaSplashStyle;\n",
+        "\t\tAmigaSplash_Style = Options::amigaSplashStyle;\n"
+        "\t\tAmigaSplash_Intro = Options::playIntro ? 1 : 0;\n"
+        "\t\tAmigaIntro_Settings(Options::mute ? 1 : 0, Options::amigaMusic, Options::musicVolume,\n"
+        "\t\t\tOptions::soundVolume, Options::getUserFolder().c_str());\n",
+        "intro while loading")))
+    results.append(("StartState.cpp (intro already played)", edit(
+        os.path.join(src, "Menu", "StartState.cpp"),
+        "\t\tif (!Options::reload && Options::playIntro)\n",
+        "\t\tif (!Options::reload && Options::playIntro\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t\t&& !amiga_intro_played()   /* played while loading (6amM) */\n"
+        "#endif\n"
+        "\t\t\t)\n",
+        "intro already played")))
     # 6amP. Options -> Amiga: SHOW FPS (the player's request, 2026-10-24),
     #       off by default now - it was on since 3c, for the optimising work.
     results.append(("Options.cpp (fpsCounter off by default)", edit(
@@ -12674,6 +12706,13 @@ def main():
         "  STR_AMIGA_FPS_DESC: \"Shows the frames per second in the top left corner of the screen.\"\n"
         "  STR_AMIGA_OFF: \"Off\"\n",
         "show fps strings")))
+    results.append(("StartState.cpp (intro played decl)", edit(
+        os.path.join(src, "Menu", "StartState.cpp"),
+        'extern "C" void SDLmini_SplashFinish(void);\n',
+        'extern "C" void SDLmini_SplashFinish(void);\n'
+        'extern "C" int amiga_intro_played(void);\n',
+        "intro played decl")))
+
     for root, _dirs, files in os.walk(src):
         for fn in files:
             if not fn.endswith((".cpp", ".h")):

@@ -53,6 +53,14 @@ extern const unsigned char * const AmigaSplashLogo;
  * SDL_SetVideoMode: 0 modern (default), 1 retro. */
 int AmigaSplash_Style = 0;
 
+/* Options::playIntro (and not a reload), set with the style: the UFO intro
+ * plays in place of the loading picture (amiga_intro.c). */
+int AmigaSplash_Intro = 0;
+int  amiga_intro_begin(void);
+void amiga_intro_progress(int percent);
+int  amiga_intro_active(void);
+void amiga_intro_end(void);
+
 static const char *const s_style_name[2] = { "modern", "retro" };
 
 static int s_active;
@@ -246,6 +254,13 @@ void AmigaSplash_Show(void)
 
 	if (s_shown) return;
 	s_shown = 1;
+	if (AmigaSplash_Intro && amiga_intro_begin()) {
+		/* the intro is the loading screen: no picture, no bar; the game's
+		 * own frames stay suppressed as for the picture */
+		s_active = 1;
+		amigagfx_pointer_suspend(1);
+		return;
+	}
 	if (AmigaSplashBgCount < 1) return;
 
 	s_image = (unsigned char *)malloc((long)SPLASH_W * SPLASH_H);
@@ -307,10 +322,22 @@ void AmigaSplash_Show(void)
 void AmigaSplash_Progress(int percent)
 {
 	int y, fillw;
-	if (!s_active || s_image == NULL) return;
-	note_tick();               /* the message has its ten seconds */
+	if (!s_active) return;
 	if (percent < 0) percent = 0;
 	if (percent > 100) percent = 100;
+	if (s_image == NULL) {     /* the intro: the timeline still goes to the log */
+		if (amiga_intro_active()) amiga_intro_progress(percent);
+		if (percent > s_percent && amiga_intro_active()) {
+			extern unsigned int SDL_GetTicks(void);
+			extern void SDLmini_Log(const char *msg);
+			char pb[48];
+			s_percent = percent;
+			snprintf(pb, sizeof pb, "splash: %d%% at %u ms (intro)", percent, SDL_GetTicks());
+			SDLmini_Log(pb);
+		}
+		return;
+	}
+	note_tick();               /* the message has its ten seconds */
 	if (percent <= s_percent) return;
 	s_percent = percent;
 	{
@@ -371,6 +398,13 @@ void AmigaSplash_End(void)
 {
 	int i;
 	if (!s_active) return;
+	if (amiga_intro_active()) {
+		/* loading is over: the intro plays on to its end (or Esc / a click) */
+		amiga_intro_end();
+		s_active = 0;
+		amigagfx_pointer_suspend(0);
+		return;
+	}
 	AmigaSplash_NoteClear();   /* loading is over: the message goes with it */
 	AmigaSplash_Progress(100);
 	for (i = 11; i >= 0; i--) {

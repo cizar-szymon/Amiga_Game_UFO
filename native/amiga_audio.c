@@ -72,6 +72,8 @@ static const int aa_mus_chan[2] = { 3, 2 };
 static struct IOAudio *aa_mus_req[2][AA_MUS_BUFS];
 static int   aa_mus_busy[2][AA_MUS_BUFS];
 
+int AmigaAudio_IsOpen(void) { return aa_ready; }
+
 int AmigaAudio_Open(void)
 {
     int i;

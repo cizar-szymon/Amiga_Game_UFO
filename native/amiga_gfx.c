@@ -2678,6 +2678,61 @@ void amigagfx_progress_end(void)
 	g_art_ok = 0;   /* each box brings its own picture */
 }
 
+/* The intro played while the game loads (amiga_intro.c) draws from its own
+ * process the same way the box above does: straight into the screen's
+ * bitmap, under g_pg_sem. Only on an 8-bit screen of our own - pens are
+ * colours there; a window or a deep screen keeps the ordinary splash. */
+int amigagfx_intro_ok(int w, int h)
+{
+	return g_screen != NULL && !g_win_mode && g_width >= w && g_height >= h &&
+	       GetBitMapAttr(g_screen->RastPort.BitMap, BMA_DEPTH) <= 8;
+}
+
+/* A w x h chunky picture centred on the screen; pal (768 bytes) first if not NULL. */
+void amigagfx_intro_put(const unsigned char *pix, int w, int h, const unsigned char *pal)
+{
+	struct RastPort rp;
+	int x0, y0;
+	pg_sem_init();
+	ObtainSemaphore(&g_pg_sem);
+	if (amigagfx_intro_ok(w, h)) {
+		if (pal != NULL) amigagfx_set_palette(pal, 0, 256);
+		if (pix != NULL) {
+			x0 = (g_width - w) / 2;
+			y0 = g_yoff + (g_height - h) / 2;
+			InitRastPort(&rp);
+			rp.BitMap = g_screen->RastPort.BitMap;
+			WriteChunkyPixels(&rp, (ULONG)x0, (ULONG)y0, (ULONG)(x0 + w - 1), (ULONG)(y0 + h - 1),
+			                  (UBYTE *)pix, (LONG)w);
+		}
+	}
+	ReleaseSemaphore(&g_pg_sem);
+}
+
+/* Rows y0..y0+n-1 of the w x h intro picture (rows: n rows of w pixels). */
+void amigagfx_intro_rows(const unsigned char *rows, int w, int h, int y0, int n)
+{
+	struct RastPort rp;
+	int x0, yb;
+	pg_sem_init();
+	ObtainSemaphore(&g_pg_sem);
+	if (amigagfx_intro_ok(w, h) && rows != NULL && y0 >= 0 && n > 0 && y0 + n <= h) {
+		x0 = (g_width - w) / 2;
+		yb = g_yoff + (g_height - h) / 2 + y0;
+		InitRastPort(&rp);
+		rp.BitMap = g_screen->RastPort.BitMap;
+		WriteChunkyPixels(&rp, (ULONG)x0, (ULONG)yb, (ULONG)(x0 + w - 1), (ULONG)(yb + n - 1),
+		                  (UBYTE *)rows, (LONG)w);
+	}
+	ReleaseSemaphore(&g_pg_sem);
+}
+
+/* the screen the intro's skip keys count on: only while it is in front */
+int amigagfx_is_front(void)
+{
+	return g_screen != NULL && IntuitionBase->FirstScreen == g_screen;
+}
+
 int amigagfx_open(int w, int h, int show_bar, int backend)
 {
 	int r;

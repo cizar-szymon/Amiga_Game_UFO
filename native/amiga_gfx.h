@@ -181,6 +181,12 @@ void amigagfx_close(void);
 void amigagfx_progress_begin(const char *label);
 void amigagfx_progress_set(int permille, int cap);
 void amigagfx_progress_end(void);
+
+/* The loading-time intro (amiga_intro.c), drawn from its own process. */
+int  amigagfx_intro_ok(int w, int h);
+void amigagfx_intro_put(const unsigned char *pix, int w, int h, const unsigned char *pal);
+void amigagfx_intro_rows(const unsigned char *rows, int w, int h, int y0, int n);
+int  amigagfx_is_front(void);
 /* The box's picture in the game's style (before begin()): w x h pixels in
  * the palette rgb (256 x RGB), 11 glyphs "0123456789%" of gh rows x 8,
  * their widths, and the palette entries of the bright and dim spinner dots. */
