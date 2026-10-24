@@ -57,4 +57,7 @@ void amiga_select_backend(int argc, char **argv)
 	SDLmini_Log(choice == AMIGA_STARTUP_RTG ? "startup: display backend RTG"
 	                                        : "startup: display backend AGA");
 	SDLmini_SetBackend(choice);
+
+	/* the Warp card's report for Options -> Amiga, gathered while we load */
+	amigastartup_warpinfo_start();
 }

@@ -14,6 +14,9 @@
 #include <intuition/intuition.h>
 #include <proto/exec.h>
 #include <proto/intuition.h>
+#include <proto/dos.h>
+#include <dos/dostags.h>
+#include <string.h>
 
 #include "amiga_startup.h"
 
@@ -111,4 +114,86 @@ int amigastartup_ask_backend(int rtg_available)
 		return AMIGA_STARTUP_QUIT;
 	}
 	return (answer == 1) ? AMIGA_STARTUP_AGA : AMIGA_STARTUP_QUIT;
+}
+
+/* The Warp card's own report for Options -> Amiga (6amW). WarpTool Diag
+ * takes ~1.5 s on the Warp1260, so it runs once, asynchronously, while the
+ * game loads; the options screen only reads the file it left. No WarpTool
+ * (another accelerator) leaves no file and the menu shows NONE. */
+#define WARPINFO_FILE "T:AmiXcom-warp.txt"
+
+void amigastartup_warpinfo_start(void)
+{
+	BPTR lock = Lock((CONST_STRPTR)"SYS:C/WarpTool", ACCESS_READ);
+	BPTR in, out;
+
+	DeleteFile((CONST_STRPTR)WARPINFO_FILE);
+	if (!lock)
+		return;
+	UnLock(lock);
+	in = Open((CONST_STRPTR)"NIL:", MODE_OLDFILE);
+	out = Open((CONST_STRPTR)WARPINFO_FILE, MODE_NEWFILE);
+	if (!in || !out) {
+		if (in) Close(in);
+		if (out) Close(out);
+		return;
+	}
+	/* asynchronous: the new process closes both handles when it ends */
+	if (SystemTags((CONST_STRPTR)"SYS:C/WarpTool Diag",
+	               SYS_Input, (ULONG)in, SYS_Output, (ULONG)out,
+	               SYS_Asynch, TRUE, TAG_DONE) == -1) {
+		Close(in);
+		Close(out);
+	}
+}
+
+/* The value after "<key>....... : " on WarpTool's line, its ANSI colour
+ * codes dropped and trailing spaces trimmed (the unit, "MHz", stays). */
+static int warpinfo_value(const char *text, const char *key, char *dst, int size)
+{
+	const char *p = strstr(text, key);
+	int n = 0;
+
+	if (!p || size < 1)
+		return 0;
+	p = strchr(p, ':');
+	if (!p)
+		return 0;
+	++p;
+	while (*p && *p != '\n' && n < size - 1) {
+		if (*p == 0x1b) {                 /* ESC [ ... letter */
+			++p;
+			if (*p == '[') ++p;
+			while (*p && *p != '\n' && !((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z')))
+				++p;
+			if (*p && *p != '\n') ++p;
+			continue;
+		}
+		if (*p == ' ' && n == 0) { ++p; continue; }
+		dst[n++] = *p++;
+	}
+	while (n > 0 && dst[n - 1] == ' ')
+		--n;
+	dst[n] = 0;
+	return n > 0;
+}
+
+int amigastartup_warpinfo(char *model, char *firmware, char *clock, int size)
+{
+	char text[4096];
+	BPTR fh = Open((CONST_STRPTR)WARPINFO_FILE, MODE_OLDFILE);
+	LONG len;
+
+	model[0] = firmware[0] = clock[0] = 0;
+	if (!fh)
+		return 0;
+	len = Read(fh, text, sizeof text - 1);
+	Close(fh);
+	if (len <= 0)
+		return 0;
+	text[len] = 0;
+	warpinfo_value(text, "Model name", model, size);
+	warpinfo_value(text, "Firmware version", firmware, size);
+	warpinfo_value(text, "clk freq", clock, size);
+	return model[0] != 0;
 }

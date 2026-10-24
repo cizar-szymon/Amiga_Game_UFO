@@ -38,6 +38,12 @@ int amigastartup_mixcost(void);
 /* 20/30/40/60, or 0 for a plain 68000. */
 int amigastartup_cpu(void);
 
+/* Start SYS:C/WarpTool Diag in the background (once, at startup), and read
+ * what it reported: the card's model, firmware and CPU clock ("100.0 MHz").
+ * Returns 0 (empty strings) when there is no WarpTool or no report yet. */
+void amigastartup_warpinfo_start(void);
+int amigastartup_warpinfo(char *model, char *firmware, char *clock, int size);
+
 /* Decide which display this run uses and tell SDLmini, before anything opens a
  * screen. Called from main() - the one line of Amiga-specific code in the
  * game's own source.

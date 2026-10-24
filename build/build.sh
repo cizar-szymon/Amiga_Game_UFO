@@ -430,6 +430,16 @@ if [ -d "$REPO/data/Language/common" ]; then
 	done
 	cp "$REPO/data/Language/SOURCE.txt" "$DEPLOY/data/common/Language/SOURCE.txt" 2>/dev/null || true
 	log "deployed $nlang extra languages"
+	# the port's own strings (Options -> Amiga) in the languages that have
+	# them: appended to the fetched file, which has no AMIGA tab of its own
+	for l in "$REPO"/native/lang/*.yml; do
+		[ -f "$l" ] || continue
+		d="$DEPLOY/data/common/Language/$(basename "$l")"
+		if [ -f "$d" ] && ! grep -q "STR_AMIGA_FOV:" "$d"; then
+			[ -n "$(tail -c 1 "$d")" ] && echo >> "$d"
+			cat "$l" >> "$d"
+		fi
+	done
 else
 	log "note: data/Language missing - English only (build/fetch_translations.py)"
 fi

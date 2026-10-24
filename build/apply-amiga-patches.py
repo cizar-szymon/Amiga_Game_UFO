@@ -9779,7 +9779,7 @@ def main():
         os.path.join(src, "..", "bin", "common", "Language", "en-US.yml"),
         "  STR_AMIGA_SPLIT_WALK: \"SPLIT MOVEMENT CALCULATION\"\n",
         "  STR_AMIGA_MUSIC: \"MUSIC\"\n"
-        "  STR_AMIGA_MUSIC_DESC: \"Amiga plays the tunes of the Amiga UFO from your own game disks (the .mus files and UFO.bank in data/UFO_AMIGA): four voices, little CPU; where those disks have no tune (battles, the intro) it stays quiet. PC game plays the DOS tunes, rendered once to disk at first start (about 40 MB and a few minutes once).\"\n"
+        "  STR_AMIGA_MUSIC_DESC: \"Amiga plays the tunes of the Amiga UFO from your own game disks (the .mus files and UFO.bank in data/UFO_AMIGA): four voices, little CPU; where those disks have no tune (battles, the intro) the PC tune plays. PC game plays the DOS tunes, rendered once to disk at first start (about 40 MB and a few minutes once).\"\n"
         "  STR_AMIGA_MUSIC_OFF: \"Off\"\n"
         "  STR_AMIGA_MUSIC_LIVE: \"Amiga\"\n"
         "  STR_AMIGA_MUSIC_PRE: \"PC game\"\n"
@@ -11256,10 +11256,10 @@ def main():
         "\t_amTxtWarp->setText(L\"WARP RTG\\n320x200 / 640x400\");\n"
         "\t_amTxtGeoFixed->setBig();\n"
         "\t_amTxtGeoFixed->setVerticalAlign(ALIGN_MIDDLE);\n"
-        "\t_amTxtGeoFixed->setText(tr(\"STR_ORIGINAL\"));\n"
+        "\t_amTxtGeoFixed->setText(L\"320x200\");   /* the sizes, not the scale names (2026-10-24) */\n"
         "\t_amTxtBattleFixed->setBig();\n"
         "\t_amTxtBattleFixed->setVerticalAlign(ALIGN_MIDDLE);\n"
-        "\t_amTxtBattleFixed->setText(tr(\"STR_2X\"));\n"
+        "\t_amTxtBattleFixed->setText(L\"640x400\");\n"
         "#endif\n"
         "\t// Get available fullscreen modes\n",
         "mixed entry init")))
@@ -11295,8 +11295,8 @@ def main():
         "void OptionsVideoState::amigaShowWarp(int which)\n"
         "{\n"
         "\tconst bool on = which != 0;\n"
-        "\tif (which == 1) { _amTxtWarp->setText(L\"WARP RTG\\n320x200 / 640x400\"); _amTxtBattleFixed->setText(tr(\"STR_2X\")); }\n"
-        "\tif (which == 2) { _amTxtWarp->setText(L\"WARP RTG\\n320x200 / 640x480\"); _amTxtBattleFixed->setText(tr(\"STR_FULL_DISPLAY\")); }\n"
+        "\tif (which == 1) { _amTxtWarp->setText(L\"WARP RTG\\n320x200 / 640x400\"); _amTxtBattleFixed->setText(L\"640x400\"); }\n"
+        "\tif (which == 2) { _amTxtWarp->setText(L\"WARP RTG\\n320x200 / 640x480\"); _amTxtBattleFixed->setText(L\"640x480\"); }\n"
         "\t_amTxtWarp->setVisible(on);\n"
         "\t_amTxtGeoFixed->setVisible(on);\n"
         "\t_amTxtBattleFixed->setVisible(on);\n"
@@ -12516,6 +12516,57 @@ def main():
         "\t\t~AmGeo10_() { if (AmigaPerfLog >= 2) AmigaGeo10Ms += SDL_GetTicks() - t0; ++AmigaGeo10N; } } amGeo10_;\n",
         "t10m probe gated")))
 
+    # 6amF. Options -> Amiga loses five rows at the player's request
+    #       (native/oxc-replace/Menu/OptionsAmigaState.cpp); their settings
+    #       are fixed here, on every load: no title bar (the 2x2 screen
+    #       corner does its job), the Amiga pointer, the normal battle
+    #       animation tick, the display standard from the machine. The
+    #       music quality switch had nothing left to switch.
+    results.append(("Options.cpp (fixed Amiga settings)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t\t\t\tamigaCursor = 1;\n"
+        "\t\t\t}\n"
+        "\t\t\tAmigaPerfLog = amigaPerfLog;\n",
+        "\t\t\t\tamigaCursor = 1;\n"
+        "\t\t\t}\n"
+        "\t\t\t/* no longer in Options -> Amiga: fixed (6amF) */\n"
+        "\t\t\tamigaAppBar = false;\n"
+        "\t\t\tamigaCursor = 1;\n"
+        "\t\t\tamigaAnimMs = 100;\n"
+        "\t\t\tamigaVideoMode = 0;\n"
+        "\t\t\tAmigaPerfLog = amigaPerfLog;\n",
+        "fixed amiga settings")))
+    # 6amL. The map reveal row described the modes as they were before the
+    #       pair update (Accurate is no slower on a 060 now; Test was not
+    #       described at all). Its label is in capitals like the others.
+    #       The translations of the tab are in native/lang/<language>.yml,
+    #       appended by build.sh to the fetched files.
+    results.append(("en-US.yml (map reveal strings)", edit(
+        os.path.join(src, "..", "bin", "common", "Language", "en-US.yml"),
+        "  STR_AMIGA_FOV: \"Map reveal\"\n"
+        "  STR_AMIGA_FOV_DESC: \"Fast: quick fog reveal, may leave the odd tile covered. Accurate: fuller reveal after every step, noticeably slower on real hardware.\"\n"
+        "  STR_AMIGA_FOV_FAST: \"Fast\"\n"
+        "  STR_AMIGA_FOV_ACCURATE: \"Accurate (slower)\"\n",
+        "  STR_AMIGA_FOV: \"MAP REVEAL\"\n"
+        "  STR_AMIGA_FOV_DESC: \"Fast: after a step only the rays to tiles not yet revealed are traced, so the odd tile may stay covered. Accurate (default): every ray after every step, as quick on a 060. Test: Fast plus a ring of rays 9-10 tiles from the soldier (for testing).\"\n"
+        "  STR_AMIGA_FOV_FAST: \"Fast\"\n"
+        "  STR_AMIGA_FOV_ACCURATE: \"Accurate\"\n",
+        "map reveal strings")))
+
+    # 6amP. Options -> Amiga: SHOW FPS (the player's request, 2026-10-24),
+    #       off by default now - it was on since 3c, for the optimising work.
+    results.append(("Options.cpp (fpsCounter off by default)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t_info.push_back(OptionInfo(\"fpsCounter\", &fpsCounter, true)); /* AMIGA-PORT: default on */\n",
+        "\t_info.push_back(OptionInfo(\"fpsCounter\", &fpsCounter, false)); /* AMIGA-PORT: Options -> Amiga (6amP) */\n",
+        "fps counter off by default")))
+    results.append(("en-US.yml (show fps strings)", edit(
+        os.path.join(src, "..", "bin", "common", "Language", "en-US.yml"),
+        "  STR_AMIGA_OFF: \"Off\"\n",
+        "  STR_AMIGA_FPS: \"SHOW FPS\"\n"
+        "  STR_AMIGA_FPS_DESC: \"Shows the frames per second in the top left corner of the screen.\"\n"
+        "  STR_AMIGA_OFF: \"Off\"\n",
+        "show fps strings")))
     for root, _dirs, files in os.walk(src):
         for fn in files:
             if not fn.endswith((".cpp", ".h")):
