@@ -2,6 +2,45 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-10-20 .. 10-24 - the RTG fork, 0.86 beta (branch feat/battle-scroll-640)
+
+35 commits after 0.9.14 (8eed426 .. 7f3a5a0), each with its cause, fix and numbers
+in the commit message; the workspace keeps two PDF reports with charts
+(`raporty/AmiXcom-poprawki-RTG.pdf`, `raporty/AmiXcom-zmiany-skrot.pdf`). Measured on
+real machines through AmiAgent: Amiga 1 = A1200 / Warp1260 (060), Amiga 2 = A4000 /
+Warp4070 (060), AmigaOS 3.2, same FPGA RTG.
+
+MEASURED (before -> after):
+- battle 640x400: standing 26 -> 50 fps, cursor 18 -> 29 (47 later), scrolling
+  48.9 -> 23.5 ms (20 -> 37 fps; the card's blitter moves the picture in VRAM, only
+  the new strips are sent), walking ~15 -> ~28 fps, a bullet hit 0.65 -> 0.28 s,
+  enemy reactions per step 25-82 -> < 10 ms, the bullet's flight 45-88 -> 24-48 ms;
+- 640x480 against 640x400, same build and day (Amiga 1): standing 50 / 50, cursor
+  47 / 46, continuous scroll 37 / 34, key scroll 30-32 / 25-28 fps;
+- -mtune=68060 (no trapped 64-bit MULS.L): alien FOV 60-140 -> 0-20 ms;
+- Geoscape 14 -> 49 fps, globe redraw 150 -> 40 ms, held-arrow rotation 11 -> 15 fps;
+- 1 DAY: quiet day 2.6 -> 0.3 s (a clock read in every 5-second step), craft flying
+  5.46 -> 0.85 s with the FPU build (trigonometry on doubles);
+- size-class allocator: autosave build 8.3 -> 0.14 s, save parse 4.9 -> 0.6 s,
+  start ~17 s shorter; ~20 MB leaked per run until ADD2INIT/ADD2EXIT (fixed).
+
+FOUND AND FIXED (proof in each commit): a 64000-byte write into a freed 320x200
+buffer (assert / Guru 81000005), Ctrl-C leaving the screen open, a double-buffer
+reset, flicker of panels and windows, four map-cache desyncs (smooth camera,
+"Hidden Movement", setMapData, the walking arrow - all 0 differences after, under
+amigaMapVerify), F12 closing the game, message boxes left on the display, the
+intro: AmigaFileBuf ignored ios::ate (tellg 0) and FlcPlayer read the little-endian
+FLI big-endian; the 10 s black screen after it failed; SDL_Delay(1) busy loop; 32 KB
+Chip staging cut 22 intro sounds; the console window on a Workbench start (and
+`__stdiowin = "NIL:"` stops an icon start altogether - never do that).
+
+NEW: Warp entries in Options -> Video (Geoscape 320x200, battles 640x400 / 640x480),
+F10 bug report + Help screenshot, load/save progress box, Amiga UFO music
+(native/amiga_ufomus.c) and 8SVX effects, the intro played with its sound while the
+game loads (native/amiga_intro.c, its own process and its own audio.device),
+Options -> Amiga reduced and translated with the Warp card's report (WarpTool),
+Show FPS, version 0.<commits>.
+
 ## 2026-09-26 - 0.9.13 i 0.9.14: dlaczego cisza, AdLib, konfigurator
 
 ### 0.9.13 - gra mowi, czemu nie ma muzyki (WYDANE? NIE - zbudowane i sprawdzone)

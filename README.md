@@ -10,6 +10,23 @@ for **real classic hardware**: 68020+ without FPU, AGA chipset. Not PiStorm-, Va
 or Emu68-only. No SDL: the SDL 1.2 API the game expects is a small shim
 (`native/sdlmini/`) on top of a bare-metal Amiga graphics/audio layer.
 
+## This fork: 0.86 beta — RTG, 68040/68060 (2026-10-24)
+
+A fork of the port above (branch `feat/battle-scroll-640`), aimed at RTG cards and the
+68040/68060, tested on Warp1260 and Warp4070. Version numbers are now `0.<commits>`:
+0 = beta, official releases will be 1.xx. The release archive `AmiXcom-0.86.lha` holds
+`UFO` (FPU) and `UFO-noFPU` (68020/030, LC060), both RTG with the size-class allocator;
+`release/AmiXcom_release_en.txt` (and `AmiXcom_release.txt`, Polish) is the full
+player's description: installing, keys, options, every change since 0.9.14.
+
+In short, measured on a Warp 060: native battles at 640x400 / 640x480 (scrolling
+20 → 37 fps, standing 26 → 50, walking ~15 → ~28), Geoscape 14 → 49 fps, a quiet 1 DAY
+2.6 → 0.3 s, saving 8.3 → 0.14 s. The UFO intro plays with its own sound while the
+game loads; music and effects can come from the Amiga release of UFO; F10 writes a bug
+report; *Options → Amiga* is translated and shows the Warp card. The biggest single
+gain was keeping the battle picture in the card's memory and scrolling it with the
+card's blitter. Builds: `AMIGA_FPU=1` and `AMIGA_FASTMALLOC=1` (see `build/build.sh`).
+
 ## Status: 0.9.14 — alpha
 
 The whole game runs on the Amiga: main menu, Geoscape, bases, Battlescape, and both

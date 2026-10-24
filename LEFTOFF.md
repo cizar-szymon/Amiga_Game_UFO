@@ -1,6 +1,27 @@
-# LEFTOFF - hand-off for the next session (updated 2026-09-02)
+# LEFTOFF - hand-off for the next session (updated 2026-10-24)
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
+
+## STAN 2026-10-24: FORK RTG, 0.86 BETA (galaz feat/battle-scroll-640)
+
+Wydanie `AmiXcom-0.86.lha` (workspace `releases/`, skrypt `tools/make_release.py`):
+`UFO` (FPU) i `UFO-noFPU`, oba RTG z szybkim alokatorem, opis gracza w
+`release/AmiXcom_release*.txt`. Numer wersji = `0.<liczba commitow>` (0 = beta,
+1.xx = oficjalne), pisany przez `docker/build.ps1` workspace'u do
+`native/amiga_buildid.h`.
+
+Budowanie (workspace `ufo/`, Docker): `docker/build.ps1 -Clean`, potem
+`-Fpu -FastMalloc` (to idzie pod ikone UFO) i `-FastMalloc` (bez FPU).
+Kazdy nowy build: pod ikone `Work:AmiXcom/UFO` na Amidze 1 (AmiAgent, domyslny
+cfg) albo `WorkSD:AmiXcom/UFO` na Amidze 2 (`amiagent-2.cfg`), suma SHA-256
+sprawdzona po wgraniu. Zmienione napisy -> wgrac tez `data/common/Language/*.yml`.
+
+Otwarte:
+- marsz i strzelanie w 640x480 niezmierzone (zapisy misja3/misja4 sa na Amidze 2);
+- AmiXcomPrefs z 0.9.14 zna stare opcje muzyki (w wydaniu go nie ma);
+- dalsze przyspieszenia bitwy: wybuch (30-50 ms na klatke), reszta zatrzymania
+  przy trafieniu (~0,28 s: cien slonca, swiatlo terenu) - opis w raportach PDF;
+- AGA w tej serii nietestowane.
 
 ## STAN: 0.9.14 WYDANE. Dziesiec wydan, wszystkie z pomiarem.
 

@@ -1,0 +1,97 @@
+AmiXcom 0.86 beta - OpenXcom (UFO: Enemy Unknown / X-COM) for the classic Amiga
+=============================================================================
+
+Release 0.86, 24.10.2026. "0" means beta; official releases will be 1.xx.
+The number is shown in the main menu ("Version RTG 0.86") and by the Shell
+command "Version UFO".
+
+REPORTING A BUG
+---------------
+Press F10 in the game where the problem is on screen. It writes
+user/xcom1/bugNNN.png (the screen), bugNNN.txt (what the game was doing) and
+bugNNN.sav (the saved game). Send those three files together with
+sdlmini.log, user/openxcom.log and the version number. Help takes a plain
+screenshot.
+
+WHAT IS IN THE ARCHIVE
+----------------------
+UFO            the game for 68040/68060 WITH an FPU (the one to use on a Warp)
+UFO-noFPU      the same game without FPU code: 68020/68030, LC060/EC060
+data/          OpenXcom's own data, translations, music instruments
+data/UFO/      empty - your X-COM game data goes here (see below)
+data/TFTD/     empty - Terror from the Deep data, optional
+data/UFO_AMIGA empty - files of the Amiga release of UFO, optional
+
+No X-COM game data is included: you need your own copy of the PC game
+(GOG and Steam copies work).
+
+REQUIREMENTS
+------------
+- RTG graphics card with an 8-bit screen mode (Picasso96 / CyberGraphX).
+  Tested on Warp1260 and Warp4070 (68060) with AmigaOS 3.2.
+- 68020 or better; a 68060 is recommended. UFO needs an FPU, UFO-noFPU not.
+- Lots of Fast RAM: 64 MB or more.
+- Disk: ~43 MB unpacked (17 MB archive), ~40 MB for the game data, ~36 MB for the
+  PC music converted to disk at the first start.
+
+INSTALLING
+----------
+1. Unpack the archive anywhere, e.g. Work:  ->  Work:AmiXcom/
+2. Copy from your PC game the folders
+     GEODATA GEOGRAPH MAPS ROUTES SOUND TERRAIN UFOGRAPH UNITS
+   into data/UFO/. Add UFOINTRO too for the intro.
+3. Optional - the Amiga UFO's own music and sound effects: copy from your
+   Amiga UFO disks into data/UFO_AMIGA/ the files
+     Defend.mus EnBase.mus Geo.mus Inter.mus Lose.mus Mars.mus NewMars.mus
+     Story.mus Win.mus UFO.bank   and the folders TacticalFX GeoScapeFX
+   Then pick MUSIC = Amiga and SOUND EFFECTS = Amiga in Options -> Amiga.
+4. Double-click UFO (or UFO-noFPU). The icon gives the game its 1 MB stack;
+   from a Shell: Stack 1000000, then UFO.
+   The first start takes longer (the PC music is converted to disk once).
+
+KEYS
+----
+F10            bug report (see above)
+Help           screenshot
+Esc / mouse    skips the intro
+Top right 2x2 pixels of the screen: click to flip to the Workbench.
+
+OPTIONS -> AMIGA
+----------------
+Map reveal, Split movement calculation, Music (Off / Amiga / PC game),
+Music source (Samples / AdLib), Sound effects (PC game / Amiga), Language
+from Workbench, Show FPS. On top: the Warp card, its firmware and CPU clock
+(from SYS:C/WarpTool, if present).
+Options -> Video: "WARP RTG 320x200 / 640x400" and "... / 640x480": the
+Geoscape on a 320x200 screen, battles native at 640x400 or 640x480.
+
+CHANGES SINCE 0.9.14 (author's last release)
+---------------------------------------------
+Speed (measured on Warp1260 / Warp4070, 68060):
+- Battles at 640x400: standing 26 -> 50 fps, scrolling 14 -> 37 fps,
+  soldiers walking ~15 -> ~28 fps; the stop on every bullet hit
+  0.65 -> 0.28 s; enemy reactions after each step 25-82 ms -> under 10 ms.
+- Geoscape: 14 -> 49 fps while time runs; globe redraw 150 -> 40 ms.
+- 1 DAY speed: a quiet day 2.6 -> 0.3 s, a craft flying 5.5 -> 0.85 s.
+- Saving: Geoscape autosave 8.3 -> 0.14 s; loading a save 4.9 -> 0.6 s;
+  start ~17 s shorter (new memory allocator).
+- Code tuned for the 68060 (no trapped 64-bit multiplies).
+New:
+- The UFO intro plays, with its original sound, WHILE the game loads;
+  Esc or a click shows the title picture with "LOADING nn %".
+- Native battles at 640x400 and 640x480 (Warp entries in Options -> Video).
+- Music and sound effects from the Amiga release of UFO, next to the PC ones.
+- Load/save progress box; F10 bug report; Help screenshot.
+- Options -> Amiga in Polish too; Show FPS (off by default).
+- No title bar; the screen flips to the Workbench from its top right corner.
+Fixed:
+- Flickering battle panel and windows; message boxes left on the screen.
+- Hangs and Gurus (a freed buffer after a resolution change, Ctrl-C, the
+  double buffer); map pictures out of step with the game in several cases.
+- F12 / screenshots closed the game; 10 s of black screen after loading;
+  the intro did not play; intro sounds were cut.
+- No console window on the Workbench when started from the icon.
+
+AmiXcom is a port of OpenXcom (GPL-3.0) by Grzegorz Korycki (angree),
+https://github.com/angree/AmiXcom - this release is a fork, made with
+Claude Code.
