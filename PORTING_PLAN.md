@@ -25,6 +25,7 @@ W `CLAUDE.md` nowego projektu:
 | | Domyślnie |
 |---|---|
 | Maszyna | Amiga 1200, **68060 @ 50 MHz** (karta Warp 1260), Fast RAM, AmigaOS 3.2 |
+| Procesor | **gry mają działać przede wszystkim na MC68060 i MC68040** (karty Warp 1260 / 4070, 040/060 z FPU i bez); 68020/030 tylko wtedy, gdy nie szkodzi to 040/060 |
 | Obraz | Picasso96 / RTG (Workbench 16-bit), okno na Workbenchu; opcjonalnie pełny ekran (RTG lub PAL bez RTG) |
 | Dźwięk | Paula przez `audio.device` (najtańsza dla CPU) albo AHI |
 | Sterowanie | joystick / pad CD32 (`lowlevel.library`) + klawiatura według **standardu klawiszy** (niżej) |
@@ -166,6 +167,9 @@ hunk” na prawdziwej Amidze), NDK 3.2, AHI dev, P96 (`p96inc`), netinclude Road
 **Testy:** najpierw WinUAE (`*_net.uae`, `build/amiga` podmontowany jako wolumin), potem prawdziwa
 A1200 przez AmiAgent (`deploy` → `key` → `stats` → `shot` → `stop`, patrz `AMIAGENT.md`).
 Sprawdzić start z ikony (nie tylko z Shella) – inne środowisko, inny stos, inne katalogi.
+Przy starcie z ikony (libnix: `_WBenchMsg != NULL`) nic nie pisać na stdout/stderr – libnix otwiera
+wtedy okno konsoli na Workbenchu; log tylko do pliku. Nie przez `__stdiowin = "NIL:"`: to blokuje
+start z ikony w ogóle (AmiXcom, 24.10.2026).
 
 **Wyjście z fazy 3:** gra działa poprawnie na prawdziwej A1200 (obraz, dźwięk, joystick), jest
 pomiar `STATS` jako punkt wyjścia optymalizacji.
@@ -182,6 +186,30 @@ pomiar `STATS` jako punkt wyjścia optymalizacji.
    karty, dźwięk, wejścia).
 3. Zmień jedną rzecz, sprawdź zgodność (`--check-render`, `Lockstep`, `VERIFY`, porównanie WAV),
    zmierz ponownie, zapisz wiersz w tabeli wydajności w `PORTING.md` (także nieudane próby).
+
+**Co daje największe efekty (pomiary z WoW, Vastar i AmiXcom na Warp 060):**
+
+1. **Praca na pamięci graficznej (VRAM karty) – największy zysk i najbardziej wydajna droga.**
+   Obraz, który już jest na karcie, zostaje na karcie: przewijanie robi blitter karty
+   (kopia VRAM→VRAM w pamięci karty), a CPU dosyła tylko nowe paski i zmienione bloki.
+   Klatka bez zmian w ogóle nie idzie na kartę. AmiXcom, bitwa 640×400: przewijanie
+   48,9 → 23,5 ms na klatkę (20 → 37 kl./s), postój 26 → 50 kl./s, marsz ~15 → ~28 kl./s;
+   wysłanie klatki przy marszu 19,5 → 4 ms. Zasady dalej obowiązują: CPU nigdy nie czyta VRAM,
+   składa w Fast RAM i zapisuje do VRAM tylko zmiany, długimi słowami.
+2. **Kompilacja pod 68040/68060** (`-mtune=68060`, sprawdzenie `find64.sh`): bez 64-bitowych
+   MULS.L/DIVS.L, które 060 emuluje w pułapkach. AmiXcom: pole widzenia 60–140 → 0–20 ms.
+3. **Nic kosztownego w gorących pętlach:** wywołania systemu (DateStamp 47 µs, `SDL_GetTicks`
+   57 µs), sondy pomiarowe, pętle aktywnego czekania (`SDL_Delay(1)` bez snu). AmiXcom 1 DAY:
+   2,6 → 0,3 s na dzień gry po usunięciu odczytu zegara z każdego 5-sekundowego kroku.
+4. **Własny przydział pamięci** (klasy rozmiarów zamiast puli libnix z first-fit przy setkach
+   tysięcy bloków): zapis gry 8,3 → 0,14 s, wczytanie 4,9 → 0,6 s.
+5. **FPU 040/060 dla trygonometrii** (osobny wariant programu z FPU): ruch po kuli ziemskiej
+   2,97 → 0,85 s na dzień gry. Gdzie liczby zmiennoprzecinkowe nie dominują – bez zysku.
+6. **Liczyć tylko to, co się zmieniło:** pola zmienione w kroku, jednostki, które widzą dane
+   miejsce, wynik zależny tylko od niezmiennych danych – raz zamiast w każdej klatce.
+
+Każdą z tych zmian mierzyć osobno na prawdziwym 040/060 i sprawdzać trybem porównania
+(0 różnic), zanim pójdzie dalej.
 
 **Sprawdzone techniki (w kolejności typowego zysku):**
 
@@ -251,7 +279,8 @@ w `PORTING.md`, `VERIFY` i porównania bez różnic. Dalsze możliwości zapisan
   w `xain.h`), widoczna w grze (np. napis `RELEASE x.y.z` na ekranie startu, Xain'd Sleena), w `$VER`
   programu Amigi (`Version Gra` w Shellu) i w tytule okna PC – żeby przy zgłoszeniu błędu wiedzieć,
   w której rewizji wystąpił i czy nie jest już poprawiony w nowszej. Każda nowa kompilacja dla
-  użytkownika podnosi numer.
+  użytkownika podnosi numer. **Schemat (od 24.10.2026): `0.xx` – beta, `1.xx` – wydania oficjalne**
+  (AmiXcom: `0.<liczba commitów>`, np. 0.86).
 - **Plik wydań `<Gra>_release.txt` / `_release_en.txt` (od 12.10.2026):** w paczce razem z grą; dla
   każdego wydania numer, data, dodatki i poprawki (opisane dla gracza), na początku jak zgłaszać
   błędy (numer wydania + pliki stanu). Uzupełniany przy każdym wydaniu.
