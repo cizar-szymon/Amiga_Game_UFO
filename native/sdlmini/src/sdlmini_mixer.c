@@ -55,9 +55,11 @@ static unsigned long s_serial;
 /* One Chip RAM staging buffer per hardware channel. Sounds themselves live in
  * Fast RAM (see Mix_LoadWAV_RW) and are copied in here to be played, because
  * Paula reads Chip RAM and there is not enough of it to hold X-COM's whole
- * sound set. 32 KB is a second and a half at 22 kHz - longer than any effect
- * in the game; anything longer is truncated rather than refused. */
-#define CHIP_STAGE_BYTES 32768
+ * sound set. 32 KB (a second and a half at 22 kHz) held every effect of the
+ * game, but not the UFO intro's (SAMPLE3.CAT 12: 57 KB at 11 kHz, ~115 KB
+ * at 22 kHz): 22 of them were cut. 128 KB is 5.9 s, 512 KB of Chip RAM for
+ * the four channels; anything longer is still truncated rather than refused. */
+#define CHIP_STAGE_BYTES 131072
 static Uint8 *s_stage[AMIGA_AUDIO_CHANNELS];
 static int    s_stage_warned;
 

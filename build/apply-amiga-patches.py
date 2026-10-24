@@ -12553,6 +12553,113 @@ def main():
         "  STR_AMIGA_FOV_ACCURATE: \"Accurate\"\n",
         "map reveal strings")))
 
+    # 6amI. ~10 s of black screen between the loading bar and the main menu
+    #       (the player's report, Warp1260, playIntro on): openxcom.log has
+    #       "Flx file failed header check." at 07:01:45 and the next line at
+    #       07:01:55. VideoState ignores FlcPlayer::init's answer, so after a
+    #       file it cannot play it still runs the end of the UFO intro's audio
+    #       sequence - flcPlayer->delay(10000) - on a black screen. A file that
+    #       does not load is now skipped like a missing one. (Why the header
+    #       check fails here - the reader's byte order and the stream's seek
+    #       to the end - is a separate question; the intro is not playing.)
+    results.append(("VideoState.cpp (unplayable video skipped)", edit(
+        os.path.join(src, "Menu", "VideoState.cpp"),
+        "\t\tflcPlayer->init(videoFileName.c_str(),\n"
+        "\t\t\t _useUfoAudioSequence ? &audioHandler : NULL,\n"
+        "\t\t\t _game, dx, dy);\n"
+        "\t\tflcPlayer->play(_useUfoAudioSequence);\n",
+        "\t\tif (!flcPlayer->init(videoFileName.c_str(),\n"
+        "\t\t\t _useUfoAudioSequence ? &audioHandler : NULL,\n"
+        "\t\t\t _game, dx, dy))\n"
+        "\t\t{\n"
+        "\t\t\t/* AMIGA-PORT (6amI): not playable - no 10 s wait on black */\n"
+        "\t\t\tdelete audioSequence;\n"
+        "\t\t\taudioSequence = NULL;\n"
+        "\t\t\tflcPlayer->deInit();\n"
+        "\t\t\tcontinue;\n"
+        "\t\t}\n"
+        "\t\tflcPlayer->play(_useUfoAudioSequence);\n",
+        "unplayable video skipped")))
+
+    # 6amJ. ...and why it failed. FLI/FLC files are little-endian, but the
+    #       big-endian readers read them as big-endian (the header type then
+    #       only matched through SDL_SwapLE16, and the width, height, frame
+    #       sizes and chunk lengths all came out byte-swapped). The readers
+    #       now read little-endian on every machine, bytes taken unsigned (the
+    #       signed ones sign-extended a low byte over the high one), and the
+    #       type is compared as it is. With the open-at-end fix in
+    #       amiga_fstream.h (tellg gave 0) the UFO intro plays.
+    results.append(("FlcPlayer.cpp (little-endian readers)", edit(
+        os.path.join(src, "Engine", "FlcPlayer.cpp"),
+        "#if SDL_BYTEORDER == SDL_BIG_ENDIAN\n"
+        "inline void FlcPlayer::readU16(Uint16 &dst, const Uint8 * const src)\n"
+        "{\n"
+        "\tdst = (src[0] << 8) | src[1];\n"
+        "}\n"
+        "inline void FlcPlayer::readU32(Uint32 &dst, const Uint8 * const src)\n"
+        "{\n"
+        "\tdst = (src[0] << 24) | (src[1] << 16) | (src[2] << 8) | src[3];\n"
+        "}\n"
+        "inline void FlcPlayer::readS16(Sint16 &dst, const Sint8 * const src)\n"
+        "{\n"
+        "\tdst = (src[0] << 8) | src[1];\n"
+        "}\n"
+        "inline void FlcPlayer::readS32(Sint32 &dst, const Sint8 * const src)\n"
+        "{\n"
+        "\tdst = (src[0] << 24) | (src[1] << 16) | (src[2] << 8) | src[3];\n"
+        "}\n",
+        "#if SDL_BYTEORDER == SDL_BIG_ENDIAN\n"
+        "/* AMIGA-PORT (6amJ): the file is little-endian whatever the CPU is */\n"
+        "inline void FlcPlayer::readU16(Uint16 &dst, const Uint8 * const src)\n"
+        "{\n"
+        "\tdst = (Uint16)((src[1] << 8) | src[0]);\n"
+        "}\n"
+        "inline void FlcPlayer::readU32(Uint32 &dst, const Uint8 * const src)\n"
+        "{\n"
+        "\tdst = ((Uint32)src[3] << 24) | ((Uint32)src[2] << 16) | ((Uint32)src[1] << 8) | src[0];\n"
+        "}\n"
+        "inline void FlcPlayer::readS16(Sint16 &dst, const Sint8 * const src)\n"
+        "{\n"
+        "\tconst Uint8 *u = (const Uint8 *)src;\n"
+        "\tdst = (Sint16)((u[1] << 8) | u[0]);\n"
+        "}\n"
+        "inline void FlcPlayer::readS32(Sint32 &dst, const Sint8 * const src)\n"
+        "{\n"
+        "\tconst Uint8 *u = (const Uint8 *)src;\n"
+        "\tdst = (Sint32)(((Uint32)u[3] << 24) | ((Uint32)u[2] << 16) | ((Uint32)u[1] << 8) | u[0]);\n"
+        "}\n",
+        "flc little-endian readers")))
+    results.append(("FlcPlayer.cpp (header type as read)", edit(
+        os.path.join(src, "Engine", "FlcPlayer.cpp"),
+        "\tif (_headerType == SDL_SwapLE16(FLI_TYPE) || (_headerType == SDL_SwapLE16(FLC_TYPE)))\n",
+        "\tif (_headerType == FLI_TYPE || _headerType == FLC_TYPE)   /* AMIGA-PORT (6amJ) */\n",
+        "flc header type")))
+    # The wait between intro frames was SDL_Delay(1) in a loop, which the port
+    # makes free (sdlmini_sleep.c): ~1.5 minutes of a busy loop that left
+    # AmiAgent without CPU. Whole 20 ms ticks are slept now, the last part of
+    # the wait is still polled.
+    results.append(("FlcPlayer.cpp (sleep between frames)", edit(
+        os.path.join(src, "Engine", "FlcPlayer.cpp"),
+        "\telse\n"
+        "\t{\n"
+        "\t\twhile (currentTick < newTick)\n"
+        "\t\t{\n"
+        "\t\t\tSDL_Delay(1);\n"
+        "\t\t\tcurrentTick = SDL_GetTicks();\n"
+        "\t\t}\n"
+        "\t}\n",
+        "\telse\n"
+        "\t{\n"
+        "\t\twhile (currentTick < newTick)\n"
+        "\t\t{\n"
+        "\t\t\t/* AMIGA-PORT (6amJ): SDL_Delay(1) does not sleep here */\n"
+        "\t\t\tint rest_ = newTick - currentTick;\n"
+        "\t\t\tSDL_Delay(rest_ >= 20 ? rest_ - rest_ % 20 : 1);\n"
+        "\t\t\tcurrentTick = SDL_GetTicks();\n"
+        "\t\t}\n"
+        "\t}\n",
+        "flc sleep between frames")))
+
     # 6amP. Options -> Amiga: SHOW FPS (the player's request, 2026-10-24),
     #       off by default now - it was on since 3c, for the optimising work.
     results.append(("Options.cpp (fpsCounter off by default)", edit(

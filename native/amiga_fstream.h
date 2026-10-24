@@ -53,6 +53,13 @@ public:
 		}
 		_file = fopen(path, m);
 		if (_file == 0) return 0;
+		// "at end": FlcPlayer opens with it and takes tellg() as the size
+		if ((mode & std::ios_base::ate) && fseek(_file, 0, SEEK_END) != 0)
+		{
+			fclose(_file);
+			_file = 0;
+			return 0;
+		}
 
 		setg(_in, _in, _in);
 		return this;
