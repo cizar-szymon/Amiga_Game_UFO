@@ -9864,7 +9864,7 @@ def main():
         os.path.join(src, "..", "bin", "common", "Language", "en-US.yml"),
         "  STR_AMIGA_SPLIT_WALK: \"SPLIT MOVEMENT CALCULATION\"\n",
         "  STR_AMIGA_MUSIC: \"MUSIC\"\n"
-        "  STR_AMIGA_MUSIC_DESC: \"Amiga plays the tunes of the Amiga UFO from your own game disks (the .mus files and UFO.bank in data/UFO_AMIGA): four voices, little CPU; where those disks have no tune (battles, the intro) the PC tune plays. PC game plays the DOS tunes, rendered once to disk at first start (about 40 MB and a few minutes once).\"\n"
+        "  STR_AMIGA_MUSIC_DESC: \"Amiga plays the tunes of the Amiga UFO from your own game disks (the .mus files and UFO.bank in data/UFO_AMIGA): four voices, little CPU; where those disks have no tune (battles, the intro) the PC tune plays. PC game plays the DOS tunes, made once by MakeMusic (its icon in the AmiXcom drawer, about 35 MB).\"\n"
         "  STR_AMIGA_MUSIC_OFF: \"Off\"\n"
         "  STR_AMIGA_MUSIC_LIVE: \"Amiga\"\n"
         "  STR_AMIGA_MUSIC_PRE: \"PC game\"\n"
@@ -13139,6 +13139,79 @@ def main():
         "#endif\n"
         ,
         "voxel tile cache")))
+
+    # 6ane. No music conversion at the start (2026-11-01, the owner's call).
+    #       With the tunes missing, the game converted them before the main
+    #       menu: half a minute for the samples, a quarter of an hour for
+    #       AdLib on a 68060 - and minutes of a loading screen read as a hang.
+    #       MakeMusic (tools/music) does it now, the same code, with a window
+    #       that says what it is doing; the game only plays what is there and
+    #       says on the loading screen when there is nothing. -amigaConvertOnly
+    #       (AmiXcomPrefs' Convert) still converts, nothing else does.
+    results.append(("Mod.cpp (no start conversion: samples)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\t\tif (!AmigaMusic_HaveRendered(path.c_str()))\n"
+        "\t\t{\n"
+        "\t\t\tif (!AmigaMusic_HaveBank())\n"
+        ,
+        "\t\tif (!AmigaMusic_HaveRendered(path.c_str()) && !Options::amigaConvertOnly)\n"
+        "\t\t{\n"
+        "\t\t\tm->amigaSetRenderPath(\"\");   /* 6ane: not made yet - MakeMusic makes it */\n"
+        "\t\t}\n"
+        "\t\telse if (!AmigaMusic_HaveRendered(path.c_str()))\n"
+        "\t\t{\n"
+        "\t\t\tif (!AmigaMusic_HaveBank())\n"
+        ,
+        "Mod.cpp (no start conversion: samples)")))
+    results.append(("Mod.cpp (no start conversion: adlib)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\t\t\tif (!AmigaMusic_HaveRendered(path.c_str()))\n"
+        "\t\t\t{\n"
+        "\t\t\t\tsnprintf(mb_, sizeof mb_, \"mus: adlib rendering %s\", i->first.c_str());\n"
+        ,
+        "\t\t\tif (!AmigaMusic_HaveRendered(path.c_str()) && !Options::amigaConvertOnly)\n"
+        "\t\t\t\tm->amigaSetRenderPath(\"\");   /* 6ane */\n"
+        "\t\t\telse if (!AmigaMusic_HaveRendered(path.c_str()))\n"
+        "\t\t\t{\n"
+        "\t\t\t\tsnprintf(mb_, sizeof mb_, \"mus: adlib rendering %s\", i->first.c_str());\n"
+        ,
+        "Mod.cpp (no start conversion: adlib)")))
+    results.append(("Mod.cpp (no start conversion: no bar)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\tAmigaSplash_Progress2(0);\n"
+        ,
+        "\tif (Options::amigaConvertOnly) AmigaSplash_Progress2(0);   /* 6ane */\n"
+        ,
+        "Mod.cpp (no start conversion: no bar)")))
+    results.append(("Mod.cpp (no start conversion: no bar steps)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\tAmigaSplash_Progress2((int)pct);\n"
+        ,
+        "\tif (OpenXcom::Options::amigaConvertOnly) AmigaSplash_Progress2((int)pct);   /* 6ane */\n"
+        ,
+        "Mod.cpp (no start conversion: no bar steps)")))
+    results.append(("Mod.cpp (no start conversion: marker)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\t{\n"
+        "\t\tstd::string mark = dir + \"/source.txt\";\n"
+        ,
+        "\tif (Options::amigaConvertOnly)   /* 6ane: what is there was made by MakeMusic */\n"
+        "\t{\n"
+        "\t\tstd::string mark = dir + \"/source.txt\";\n"
+        ,
+        "Mod.cpp (no start conversion: marker)")))
+    results.append(("Mod.cpp (no start conversion: the note)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\telse if (Options::musicVolume == 0)\n"
+        ,
+        "\telse if (Options::amigaMusic >= 1 && done == 0 && !Options::amigaConvertOnly)   /* 6ane */\n"
+        "\t\tmsg = \"NO MUSIC YET: the PC music is made\\n\"\n"
+        "\t\t      \"once by MakeMusic - double-click its\\n\"\n"
+        "\t\t      \"icon in the AmiXcom drawer (about half\\n\"\n"
+        "\t\t      \"a minute on a 68060).\";\n"
+        "\telse if (Options::musicVolume == 0)\n"
+        ,
+        "Mod.cpp (no start conversion: the note)")))
 
     for root, _dirs, files in os.walk(src):
         for fn in files:
