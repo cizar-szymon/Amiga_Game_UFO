@@ -13226,6 +13226,32 @@ def main():
         "\t\t\tOptions::amigaConvertOnly = 0;   /* 6anf: not saved as a setting */\n",
         "convert only once")))
 
+    # 6ang. The Abort Mission window never showed (F10 report bug001,
+    #       Warp1260, 2026-11-01): the player pressed abort, the window was
+    #       open and taking the clicks, the screen showed the battle - nothing
+    #       could be done. The window's first frame went out as a VRAM layer
+    #       frame (sdlmini_video.c layer_frame) and came out without it; every
+    #       frame after was judged unchanged and skipped. With the VRAM layer
+    #       off, or frame skip off, or frame skip in verify mode (unchanged
+    #       frames composed anyway) the window is there. The same in 0.86.
+    #       6pop already sends a full frame when a state closes; now also when
+    #       one opens - the first frame of every window is composed and sent
+    #       whole, the ordinary way, as with the layer off.
+    results.append(("Game.cpp (full frame after a state opens)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        "void Game::pushState(State *state)\n"
+        "{\n"
+        "\t_states.push_back(state);\n"
+        "\t_init = false;\n",
+        "void Game::pushState(State *state)\n"
+        "{\n"
+        "\t_states.push_back(state);\n"
+        "\t_init = false;\n"
+        "#ifdef __AMIGA__\n"
+        "\tSDLmini_ForceFullFrame();   /* its first frame whole, not as a layer frame (6ang) */\n"
+        "#endif\n",
+        "full frame after a state opens")))
+
     for root, _dirs, files in os.walk(src):
         for fn in files:
             if not fn.endswith((".cpp", ".h")):
