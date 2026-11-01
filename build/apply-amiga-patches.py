@@ -4243,6 +4243,7 @@ def main():
         "\tint _fcOwn;            /* scroll: the map surface IS phase _fcOwn's picture, its _fcPix is stale; -1 none */\n"
         "\tUint32 _fcOwnGen;      /* the surface's content generation when draw() left it */\n"
         "\tUint32 _fcShownGen;    /* the same, kept for every frame: the surface still holds that picture */\n"
+        "\tbool _fcMsgUp; int _fcMsgW, _fcMsgH;   /* 6anb: the surface shows the hidden-movement screen */\n"
         "\tvoid amigaDiffIn(const Uint8 *src, int spitch);\n"
         "\tvoid amigaMarkPhaseDeps(int except);\n"
         "\t/* scroll window: while scrolling, the surface's pixels are a window into a\n"
@@ -4280,6 +4281,7 @@ def main():
         "\t_fcCamX = _fcCamY = -100000;\n"
         "\t_fcScrollStrip = false; _fcStripX0 = _fcStripY0 = 0; _fcStripX1 = _fcStripY1 = 0;\n"
         "\t_fcOwn = -1; _fcOwnGen = 0; _fcShownGen = 0;\n"
+        "\t_fcMsgUp = false; _fcMsgW = _fcMsgH = 0;\n"
         "\t_fcWinMem = _fcWinBuf = 0; _fcWinBW = _fcWinBH = _fcWinX = _fcWinY = 0; _fcWinOrigPix = 0; _fcWinOrigPitch = 0;\n"
         "\t_fcProjLx0 = _fcProjLy0 = 0; _fcProjLx1 = _fcProjLy1 = -1;\n"
         "\t_fcProjIdx = -1;\n"
@@ -5496,6 +5498,7 @@ def main():
         "\t\t * recompose. The map underneath is still valid. */\n"
         "\t\tif (_fcOwn >= 0) { _fcValid[_fcOwn] = 0; _fcOwn = -1; }   /* ...unless only the surface held it */\n"
         "\t\tSDLmini_LayerFull(getSurface());\n"
+        "\t\t_fcMsgUp = true; _fcMsgW = getWidth(); _fcMsgH = getHeight();   /* 6anb */\n"
         "#endif\n"
         "\t\t_message->blit(this);\n"
         "\t}\n"
@@ -11623,6 +11626,24 @@ def main():
         "\t\t\tif (Options::amigaMapVerify && last_ != (int)shown_) SDLmini_Log(shown_ ? \"mapverify: map shown\" : \"mapverify: hidden-movement screen\");\n"
         "\t\t\tlast_ = (int)shown_;\n"
         "\t\t}\n"
+        "\t\t/* 6anb (2026-11-01): the hidden-movement screen again, and nothing\n"
+        "\t\t * else wrote the surface since it was drawn: it is still on the\n"
+        "\t\t * screen, pixel for pixel. Redrawing it cleared the map, blitted the\n"
+        "\t\t * message and sent all 640x480 to the card - ~20 ms of every frame of\n"
+        "\t\t * an alien turn, 2-9 s of each (Warp1260, Ethereal terror site).\n"
+        "\t\t * The marks above wait for the map, as they did. */\n"
+        "\t\tif (!shown_)\n"
+        "\t\t{\n"
+        "\t\t\tif (Options::amigaHiddenSkip && _fcMsgUp && _fcShownGen != 0 && getSurface()->amgen == _fcShownGen\n"
+        "\t\t\t\t&& _fcMsgW == getWidth() && _fcMsgH == getHeight())\n"
+        "\t\t\t{\n"
+        "\t\t\t\tSDLmini_LayerDone(getSurface());\n"
+        "\t\t\t\t_redraw = false;\n"
+        "\t\t\t\treturn;\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "\t\telse\n"
+        "\t\t\t_fcMsgUp = false;\n"
         "\t\tif (shown_ && _fcValid[ph_] && _fcPix[ph_] != 0)\n",
         "no cache under the hidden-movement screen")))
     results.append(("Map.cpp (mapverify logs explosions)", edit(
@@ -12783,6 +12804,49 @@ def main():
         'extern "C" void SDLmini_SplashFinish(void);\n'
         'extern "C" int amiga_intro_played(void);\n',
         "intro played decl")))
+
+
+    # 6ana. Side time probe (2026-11-01): "endturn: side N took M ms" for each
+    #       side's turn, the clean measure of an alien / civilian turn (the
+    #       aiturn line also counts the time the next-turn screen waits for a
+    #       click). Plus amigaHiddenSkip, the switch for 6anb (Map::draw).
+    #       Tried here and dropped: running several walk ticks per frame while
+    #       an unseen unit walks. From the same battle save (deterministic: the
+    #       same AI calls and rays), 3 alien + 3 civilian turns: -1%. With the
+    #       hidden-movement screen no longer redrawn (6anb) such frames are
+    #       already cheap; the turn is AI thinking and FOV.
+    results.append(("Options.inc.h (hidden skip)", edit(
+        os.path.join(src, "Engine", "Options.inc.h"),
+        "OPT int amigaAutoBattle; /* 1 = boot straight into a New Battle */\n",
+        "OPT int amigaAutoBattle; /* 1 = boot straight into a New Battle */\n"
+        "OPT int amigaHiddenSkip; /* 1 = the hidden-movement screen is not redrawn while it stays up (6anb) */\n",
+        "hidden skip decl")))
+    results.append(("Options.cpp (hidden skip)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t_info.push_back(OptionInfo(\"amigaAutoBattle\", &amigaAutoBattle, 0)); /* 1 = skip the menus, generate a battle at boot */\n",
+        "\t_info.push_back(OptionInfo(\"amigaAutoBattle\", &amigaAutoBattle, 0)); /* 1 = skip the menus, generate a battle at boot */\n"
+        "\t_info.push_back(OptionInfo(\"amigaHiddenSkip\", &amigaHiddenSkip, 1)); /* 6anb */\n",
+        "hidden skip info")))
+    results.append(("BattlescapeGame.cpp (side time probe)", edit(
+        os.path.join(src, "Battlescape", "BattlescapeGame.cpp"),
+        "void BattlescapeGame::endTurn()\n"
+        "{\n",
+        "void BattlescapeGame::endTurn()\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* 6ana: how long each side's turn took */\n"
+        "\t{\n"
+        "\t\tstatic unsigned long et0_ = 0;\n"
+        "\t\tunsigned long n_ = SDL_GetTicks();\n"
+        "\t\tchar b_[128];\n"
+        "\t\tsnprintf(b_, sizeof b_, \"endturn: side %d took %lu ms\",\n"
+        "\t\t\t(int)_save->getSide(), et0_ ? n_ - et0_ : 0UL);\n"
+        "\t\tSDLmini_Log(b_);\n"
+        "\t\tet0_ = n_;\n"
+        "\t}\n"
+        "#endif\n"
+        ,
+        "side time probe")))
 
     for root, _dirs, files in os.walk(src):
         for fn in files:
