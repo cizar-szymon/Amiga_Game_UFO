@@ -13075,6 +13075,71 @@ def main():
         ,
         "ai function probe print")))
 
+    # 6and. voxelCheck tile cache (2026-11-01). A ray (calculateLine) asks
+    #       voxelCheck about every voxel it passes, and each call divided the
+    #       voxel by (16,16,24) and looked up the tile AND the tile below it -
+    #       which change only every 16 voxels. Most of an alien turn on a
+    #       terror site is such rays: visibility misses (canTargetUnit tries
+    #       every point of the target), civilians' escape tiles, blaster
+    #       targets. The last tile and the one below are kept; Tile pointers
+    #       do not change during a battle and a new TileEngine (new battle,
+    #       loaded game) forgets them. Units are still read live.
+    results.append(("TileEngine.cpp (voxel tile cache state)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "static unsigned long amVisGen_ = 1;\n",
+        "static unsigned long amVisGen_ = 1;\n"
+        "/* 6and: voxelCheck's last tile and the tile below it */\n"
+        "static int amVcX_ = -1, amVcY_ = -1, amVcZ_ = -1;\n"
+        "static Tile *amVcTile_ = 0, *amVcBelow_ = 0;\n"
+        ,
+        "voxel tile cache state")))
+    results.append(("TileEngine.cpp (voxel tile cache reset)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\t++amVisGen_;   /* new battle: old entries are for another map */\n",
+        "\t++amVisGen_;   /* new battle: old entries are for another map */\n"
+        "\tamVcX_ = amVcY_ = amVcZ_ = -1; amVcTile_ = amVcBelow_ = 0;   /* 6and */\n",
+        "voxel tile cache reset")))
+    results.append(("TileEngine.cpp (voxel tile cache)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\tTile *tile = _save->getTile(voxel / Position(16, 16, 24));\n"
+        "\t// check if we are not out of the map\n"
+        "\tif (tile == 0 || voxel.x < 0 || voxel.y < 0 || voxel.z < 0)\n"
+        "\t{\n"
+        "\t\treturn V_OUTOFBOUNDS;\n"
+        "\t}\n"
+        "\tTile *tileBelow = _save->getTile(tile->getPosition() + Position(0,0,-1));\n"
+        ,
+        "#ifdef __AMIGA__\n"
+        "\t/* 6and: the same tile as the previous voxel, most of the time */\n"
+        "\tif (voxel.x < 0 || voxel.y < 0 || voxel.z < 0)\n"
+        "\t{\n"
+        "\t\treturn V_OUTOFBOUNDS;\n"
+        "\t}\n"
+        "\tconst int vtx_ = voxel.x >> 4, vty_ = voxel.y >> 4, vtz_ = voxel.z / 24;\n"
+        "\tif (vtx_ != amVcX_ || vty_ != amVcY_ || vtz_ != amVcZ_)\n"
+        "\t{\n"
+        "\t\tamVcTile_ = _save->getTile(Position(vtx_, vty_, vtz_));\n"
+        "\t\tamVcBelow_ = amVcTile_ ? _save->getTile(Position(vtx_, vty_, vtz_ - 1)) : 0;\n"
+        "\t\tamVcX_ = vtx_; amVcY_ = vty_; amVcZ_ = vtz_;\n"
+        "\t}\n"
+        "\tTile *tile = amVcTile_;\n"
+        "\tif (tile == 0)\n"
+        "\t{\n"
+        "\t\treturn V_OUTOFBOUNDS;\n"
+        "\t}\n"
+        "\tTile *tileBelow = amVcBelow_;\n"
+        "#else\n"
+        "\tTile *tile = _save->getTile(voxel / Position(16, 16, 24));\n"
+        "\t// check if we are not out of the map\n"
+        "\tif (tile == 0 || voxel.x < 0 || voxel.y < 0 || voxel.z < 0)\n"
+        "\t{\n"
+        "\t\treturn V_OUTOFBOUNDS;\n"
+        "\t}\n"
+        "\tTile *tileBelow = _save->getTile(tile->getPosition() + Position(0,0,-1));\n"
+        "#endif\n"
+        ,
+        "voxel tile cache")))
+
     for root, _dirs, files in os.walk(src):
         for fn in files:
             if not fn.endswith((".cpp", ".h")):
