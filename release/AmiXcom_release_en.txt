@@ -1,8 +1,8 @@
-AmiXcom 0.86 beta - OpenXcom (UFO: Enemy Unknown / X-COM) for the classic Amiga
+AmiXcom 0.100 beta - OpenXcom (UFO: Enemy Unknown / X-COM) for the classic Amiga
 =============================================================================
 
-Release 0.86, 24.10.2026. "0" means beta; official releases will be 1.xx.
-The number is shown in the main menu ("Version RTG 0.86") and by the Shell
+Release 0.100, 2.11.2026. "0" means beta; official releases will be 1.xx.
+The number is shown in the main menu ("Version RTG 0.100") and by the Shell
 command "Version UFO".
 
 REPORTING A BUG
@@ -67,6 +67,32 @@ from Workbench, Show FPS. On top: the Warp card, its firmware and CPU clock
 (from SYS:C/WarpTool, if present).
 Options -> Video: "WARP RTG 320x200 / 640x400" and "... / 640x480": the
 Geoscape on a 320x200 screen, battles native at 640x400 or 640x480.
+
+CHANGES IN 0.100 (since 0.86)
+----------------------------
+New:
+- MakeMusic (its icon in the AmiXcom drawer) makes the PC music from your
+  X-COM files: about half a minute on a 68060 at 100 MHz (the AdLib music
+  about 15 minutes), a window shows the progress. The game itself NO longer
+  converts the music at its start - no more minutes of loading; without
+  music the loading screen says "NO MUSIC YET". On a PC the same is done by
+  tools/music/make_music.py of the sources. Terror from the Deep: Tool Type
+  GAME=TFTD (not yet tried with the TFTD files).
+- Installation step by step: Install_en.txt, Install_pl.txt, Install_de.txt.
+Speed (Warp1260, 68060 at 100 MHz, battles at 640x480):
+- No jerk when the map stops scrolling (scrolling 26 -> 33 fps).
+- Large units (sectopod, reaper, cyberdisc, the X-COM tanks) no longer
+  freeze an alien turn for 10-17 s (now about 2 s at most).
+- Alien and civilian turns about 24% shorter on a terror site (the "Hidden
+  Movement" screen is no longer redrawn every frame).
+Fixed:
+- The "Abort Mission" window did not show on the screen - the game waited
+  for a click on an invisible button (an F10 report). Now the first frame
+  of every new window goes to the screen whole.
+- After "Convert music" in AmiXcomPrefs every later start of the game
+  converted the music and quit at once.
+Known: with a tank (2x2) selected, the picture under the blue part of the
+cursor can be out of date.
 
 CHANGES SINCE 0.9.14 (author's last release)
 ---------------------------------------------

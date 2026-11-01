@@ -1,8 +1,8 @@
-AmiXcom 0.86 beta - OpenXcom (UFO: Enemy Unknown / X-COM) na klasyczną Amigę
+AmiXcom 0.100 beta - OpenXcom (UFO: Enemy Unknown / X-COM) na klasyczną Amigę
 ============================================================================
 
-Wydanie 0.86, 24.10.2026. "0" oznacza wersję beta; wydania oficjalne będą
-miały numer 1.xx. Numer widać w menu głównym ("Version RTG 0.86") i po
+Wydanie 0.100, 2.11.2026. "0" oznacza wersję beta; wydania oficjalne będą
+miały numer 1.xx. Numer widać w menu głównym ("Version RTG 0.100") i po
 poleceniu Shella "Version UFO".
 
 ZGŁASZANIE BŁĘDÓW
@@ -66,6 +66,31 @@ Język z Workbencha, Pokazuj FPS. Na górze: karta Warp, jej firmware i zegar
 CPU (z SYS:C/WarpTool, jeśli jest).
 Options -> Video (Obraz): "WARP RTG 320x200 / 640x400" i "... / 640x480":
 Geoscape na ekranie 320x200, bitwy natywnie w 640x400 albo 640x480.
+
+ZMIANY W 0.100 (od 0.86)
+-----------------------
+Nowości:
+- MakeMusic (ikona w szufladzie AmiXcom) robi muzykę z PC z Twoich plików
+  X-COM: ok. pół minuty na 68060 100 MHz (muzyka AdLib ok. 15 minut), okno
+  pokazuje postęp. Sama gra NIE konwertuje już muzyki przy starcie - start
+  nie trwa minutami; bez muzyki ekran wczytywania pisze "NO MUSIC YET".
+  Na PC to samo robi tools/music/make_music.py ze źródeł. Terror from the
+  Deep: Tool Type GAME=TFTD (jeszcze niesprawdzone z plikami TFTD).
+- Instalacja krok po kroku: Install_pl.txt, Install_en.txt, Install_de.txt.
+Szybkość (Warp1260, 68060 100 MHz, bitwy 640x480):
+- Koniec przewijania mapy bez szarpnięcia (przewijanie 26 -> 33 kl./s).
+- Duże jednostki (Sectopod, Reaper, Cyberdisc, czołgi X-COM) nie zamrażają
+  już tury obcych na 10-17 s (teraz najwyżej ok. 2 s).
+- Tura obcych i cywilów ok. 24% krótsza na mapie terroru (plansza "Hidden
+  Movement" nie jest już rysowana od nowa w każdej klatce).
+Poprawki:
+- Okno "Abort Mission" (przerwanie misji) nie pojawiało się na ekranie -
+  gra czekała na kliknięcie w niewidoczny przycisk (zgłoszenie F10).
+  Teraz pierwsza klatka każdego nowego okna idzie na ekran w całości.
+- Po "Convert music" w AmiXcomPrefs gra przy każdym następnym starcie
+  konwertowała muzykę i od razu się zamykała.
+Znane: przy wybranym czołgu (2x2) obraz w miejscu niebieskiej części
+kursora bywa nieaktualny.
 
 ZMIANY OD 0.9.14 (ostatniego wydania autora portu)
 ---------------------------------------------------

@@ -2,6 +2,23 @@
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
 
+## STAN 2026-11-01: 0.100 BETA (galaz feat/makemusic, main)
+
+- Bitwy pozno w grze: wypelnianie faz po przewinieciu (`amigaSeedAfterScroll`),
+  pamiec getTUCost dla jednostek 2x2 (Sectopod), plansza Hidden Movement nie
+  rysowana co klatke (6anb, `amigaHiddenSkip`), voxelCheck pamieta pole (6and),
+  sondy `endturn:` (6ana) i `aifn:` (6anc). Pomiary: z jednego zapisu bitwy
+  (deterministyczny, `ethbench.asav` na Amidze 1) - inaczej szum.
+- Muzyka: gra NIE konwertuje przy starcie (6ane), tylko MakeMusic
+  (`tools/music/`, ikona w paczce) albo `make_music.py` na PC; 6anf:
+  -amigaConvertOnly nie zapisuje sie w options.cfg. `tools/music/README.md`.
+- 6ang: pelna klatka po otwarciu okna (Game::pushState) - okno Abort Mission
+  bylo niewidoczne (ramka warstwy VRAM bez niego, potem same "bez zmian");
+  przyczyna w layer_frame NIE ustalona do konca - obejscie.
+- Publikacja: `PUBLISHING.md`. Opisy gracza: `release/Install_*.txt`.
+- Otwarte: niezgodnosc obrazu przy niebieskiej czesci kursora 2x2 (wybrany
+  czolg); TFTD w MakeMusic niesprawdzone (brak danych).
+
 ## STAN 2026-10-24: FORK RTG, 0.86 BETA (galaz feat/battle-scroll-640)
 
 Wydanie `AmiXcom-0.86.lha` (workspace `releases/`, skrypt `tools/make_release.py`):
