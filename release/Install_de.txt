@@ -1,0 +1,112 @@
+AmiXcom - Installation Schritt für Schritt
+=========================================
+
+Was du brauchst
+---------------
+- Einen Amiga mit 68040 oder 68060 (mit 68020/68030 läuft es, aber langsam).
+  UFO braucht eine FPU; UFO-noFPU nicht (68020/68030, LC060/EC060).
+- Eine RTG-Grafikkarte mit 8-Bit-Bildschirmmodi (256 Farben, Picasso96 oder
+  CyberGraphX). Getestet mit Warp1260 und Warp4070 (68060), AmigaOS 3.2.
+- Fast RAM: 64 MB oder mehr.
+- Platz auf der Festplatte: etwa 45 MB für AmiXcom, etwa 40 MB für die
+  Spieldaten und etwa 35 MB für die Musik.
+- Dein eigenes X-COM: UFO Defense (UFO: Enemy Unknown) für den PC - die
+  Versionen von GOG und Steam funktionieren. Die Amiga-Version von UFO allein
+  reicht nicht (ihre Musik und Effekte lassen sich dazunehmen, Schritt 4).
+
+
+SCHRITT 1 - das Archiv auspacken
+--------------------------------
+In einer Shell (Work: ist nur ein Beispiel):
+
+  lha x AmiXcom-0.xx.lha Work:
+
+Das ergibt die Schublade Work:AmiXcom mit dem Spiel (UFO, UFO-noFPU),
+MakeMusic, diesen Texten und den Schubladen data und user.
+
+
+SCHRITT 2 - die Spieldaten kopieren
+-----------------------------------
+Grafik, Klänge und Karten von X-COM sind nicht im Archiv - sie kommen aus
+deinem eigenen PC-Spiel. Suche das Verzeichnis mit GEODATA, SOUND und den
+anderen (bei GOG und Steam das Verzeichnis XCOM des installierten Spiels) und
+kopiere diese Verzeichnisse auf den Amiga (Netzwerk, CF/SD-Karte, USB-Stick)
+nach Work:AmiXcom/data/UFO:
+
+  GEODATA GEOGRAPH MAPS ROUTES SOUND TERRAIN UFOGRAPH UNITS
+  UFOINTRO (nur für das Intro - nicht nötig)
+
+
+SCHRITT 3 - die Musik erzeugen (einmal)
+---------------------------------------
+Die Musik wird aus deinen Spieldateien (GM.CAT oder ADLIB.CAT in SOUND) nach
+user/music umgewandelt: 14 Dateien, etwa 35 MB. Ohne sie läuft das Spiel
+ohne Musik. Zwei Wege - wähle einen:
+
+A) Auf dem Amiga, mit MakeMusic (empfohlen)
+   1. Öffne die Schublade AmiXcom und doppelklicke MakeMusic (der
+      Lautsprecher mit Noten).
+   2. Ein Fenster zeigt jedes fertige Stück. Mit einem 68060 bei 100 MHz
+      dauert es etwa eine halbe Minute (gemessen: 23 s); die AdLib-Musik
+      (unten) etwa 15 Minuten. Ein langsamerer Amiga braucht entsprechend
+      länger.
+      MakeMusic läuft auf jedem Amiga, auf dem das Spiel läuft (68020 oder
+      besser, keine FPU nötig), und braucht etwa 10 MB freien Speicher.
+   3. Drücke Return, um das Fenster zu schließen.
+   MakeMusic erzeugt die Musik, auf die das Spiel eingestellt ist: "Samples"
+   (GM.CAT mit den Instrumenten des Ports, Voreinstellung) oder "AdLib"
+   (ADLIB.CAT, der Klang der AdLib-Karte des PCs) - siehe Options -> Amiga
+   -> Music source. Für die andere setze im Icon von MakeMusic den Tool Type
+   SOURCE=ADLIB (oder SOURCE=SAMPLES) (Piktogramme -> Informationen), oder in
+   einer Shell:
+     cd Work:AmiXcom
+     MakeMusic SOURCE=ADLIB
+   Terror from the Deep (Dateien in data/TFTD): MakeMusic nimmt das in den
+   Optionen des Spiels aktive Spiel oder den Tool Type GAME=TFTD. (Mit den
+   TFTD-Dateien noch nicht ausprobiert.)
+
+B) Auf einem PC, in Sekunden
+   Braucht Python 3 und einen C++-Compiler (g++, z. B. MSYS2 unter Windows,
+   oder Docker). Mit den Quellen von AmiXcom
+   (github.com/cizar-szymon/Amiga_Game_UFO), dem ausgepackten Archiv in einem
+   Verzeichnis AmiXcom und dem Spielverzeichnis von X-COM:
+     python tools/music/make_music.py --game AmiXcom --sound "C:\GOG Games\UFO Defense\XCOM"
+   (für die AdLib-Musik --source adlib dazu), dann AmiXcom/user/music als
+   Work:AmiXcom/user/music auf den Amiga kopieren. Die Musik aus Samples
+   ist Byte für Byte dieselbe wie auf dem Amiga; die AdLib-Musik ist dieselbe
+   Musik (gleiche Länge und Lautstärke), nur einzelne Samplewerte können
+   leicht abweichen (der emulierte AdLib-Chip rechnet einige Tabellen mit
+   Gleitkommazahlen).
+
+Das Spiel selbst wandelt die Musik nicht um: ist user/music leer, zeigt
+der Ladebildschirm "NO MUSIC YET" und das Spiel läuft ohne Musik.
+
+
+SCHRITT 4 - Musik und Effekte des Amiga-UFO (optional)
+------------------------------------------------------
+Kopiere von deinen eigenen Amiga-UFO-Disketten nach Work:AmiXcom/data/UFO_AMIGA
+die Dateien
+  Defend.mus EnBase.mus Geo.mus Inter.mus Lose.mus Mars.mus NewMars.mus
+  Story.mus Win.mus UFO.bank   und die Verzeichnisse TacticalFX GeoScapeFX
+und wähle Options -> Amiga -> Music = Amiga und Sound effects = Amiga.
+
+
+SCHRITT 5 - das Spiel starten
+-----------------------------
+Doppelklicke UFO (oder UFO-noFPU). Das Icon gibt dem Spiel 1 MB Stack; aus
+einer Shell: Stack 1000000, dann UFO. Options -> Video: "WARP RTG 320x200 /
+640x480" - Gefechte auf einem 640x480-Bildschirm.
+
+
+Wenn etwas nicht geht
+---------------------
+- Das Spiel meldet fehlende Daten: die Verzeichnisse aus Schritt 2 sind
+  nicht in Work:AmiXcom/data/UFO.
+- Keine Musik: Schritt 3 fehlt, oder Options -> Amiga -> Music ist aus.
+  Die Datei user/music/source.txt sagt, woraus die Musik erzeugt wurde.
+- MakeMusic meldet "Kein GM.CAT oder ADLIB.CAT": SOUND fehlt in data/UFO.
+- Ein Fehler im Spiel: F10 drücken, solange er zu sehen ist, und die Dateien
+  user/xcom1/bugNNN.* mit sdlmini.log, user/openxcom.log und der
+  Versionsnummer schicken (Hauptmenü, "Version RTG 0.xx").
+
+Mehr (englisch): AmiXcom_release_en.txt.

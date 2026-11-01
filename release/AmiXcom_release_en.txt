@@ -17,6 +17,8 @@ WHAT IS IN THE ARCHIVE
 ----------------------
 UFO            the game for 68040/68060 WITH an FPU (the one to use on a Warp)
 UFO-noFPU      the same game without FPU code: 68020/68030, LC060/EC060
+MakeMusic      makes the game's music from your X-COM files (Install_en.txt, step 3)
+Install_en.txt installation step by step (also _pl, _de)
 data/          OpenXcom's own data, translations, music instruments
 data/UFO/      empty - your X-COM game data goes here (see below)
 data/TFTD/     empty - Terror from the Deep data, optional
@@ -31,8 +33,8 @@ REQUIREMENTS
   Tested on Warp1260 and Warp4070 (68060) with AmigaOS 3.2.
 - 68020 or better; a 68060 is recommended. UFO needs an FPU, UFO-noFPU not.
 - Lots of Fast RAM: 64 MB or more.
-- Disk: ~43 MB unpacked (17 MB archive), ~40 MB for the game data, ~36 MB for the
-  PC music converted to disk at the first start.
+- Disk: ~43 MB unpacked (17 MB archive), ~40 MB for the game data, ~35 MB for the
+  PC music (made once by MakeMusic, Install_en.txt, step 3).
 
 INSTALLING
 ----------
@@ -47,7 +49,8 @@ INSTALLING
    Then pick MUSIC = Amiga and SOUND EFFECTS = Amiga in Options -> Amiga.
 4. Double-click UFO (or UFO-noFPU). The icon gives the game its 1 MB stack;
    from a Shell: Stack 1000000, then UFO.
-   The first start takes longer (the PC music is converted to disk once).
+   MakeMusic makes the PC music once (Install_en.txt, step 3); the game
+   itself does not convert it.
 
 KEYS
 ----
