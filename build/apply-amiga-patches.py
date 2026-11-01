@@ -12862,6 +12862,219 @@ def main():
         ,
         "side time probe")))
 
+    # 6anc. AI function probe (2026-11-01): an alien turn on a terror site is
+    #       ~24 s of AIModule::think with 60-70 thousand calculateLine rays;
+    #       which of the AI's searches spend them. Time, calls, rays and
+    #       pathfinding ms per function, printed per side by the 6ana probe
+    #       ("aifn:"). Nested functions count in their callers too.
+    results.append(("Battlescape/AIModule.cpp (ai function probe)", edit(
+        os.path.join(src, "Battlescape", "AIModule.cpp"),
+        "#endif\n"
+        "void AIModule::think(BattleAction *action)\n",
+        "#ifdef __AMIGA__\n"
+        "extern \"C\" { extern unsigned long AmigaAiLineN, AmigaAiPathMs; }\n"
+        "extern \"C\" { unsigned long AmigaAiFnMs[16], AmigaAiFnN[16], AmigaAiFnRay[16], AmigaAiFnPath[16]; }\n"
+        "struct AmAiFn_ { int i; unsigned long t0, r0, p0;\n"
+        "\tAmAiFn_(int k) : i(k), t0(SDL_GetTicks()), r0(AmigaAiLineN), p0(AmigaAiPathMs) {}\n"
+        "\t~AmAiFn_() { AmigaAiFnMs[i] += SDL_GetTicks() - t0; ++AmigaAiFnN[i]; AmigaAiFnRay[i] += AmigaAiLineN - r0; AmigaAiFnPath[i] += AmigaAiPathMs - p0; } };\n"
+        "#endif\n"
+        "#endif\n"
+        "void AIModule::think(BattleAction *action)\n",
+        "ai function probe")))
+    results.append(("Battlescape/AIModule.cpp (ai probe patrol)", edit(
+        os.path.join(src, "Battlescape", "AIModule.cpp"),
+        "void AIModule::setupPatrol()\n"
+        "{\n"
+,
+        "void AIModule::setupPatrol()\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tAmAiFn_ amFn_(0);   /* 6anc */\n"
+        "#endif\n"
+        ,
+        "ai probe patrol")))
+    results.append(("Battlescape/AIModule.cpp (ai probe ambush)", edit(
+        os.path.join(src, "Battlescape", "AIModule.cpp"),
+        "void AIModule::setupAmbush()\n"
+        "{\n"
+,
+        "void AIModule::setupAmbush()\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tAmAiFn_ amFn_(1);   /* 6anc */\n"
+        "#endif\n"
+        ,
+        "ai probe ambush")))
+    results.append(("Battlescape/AIModule.cpp (ai probe attack)", edit(
+        os.path.join(src, "Battlescape", "AIModule.cpp"),
+        "void AIModule::setupAttack()\n"
+        "{\n"
+,
+        "void AIModule::setupAttack()\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tAmAiFn_ amFn_(2);   /* 6anc */\n"
+        "#endif\n"
+        ,
+        "ai probe attack")))
+    results.append(("Battlescape/AIModule.cpp (ai probe escape)", edit(
+        os.path.join(src, "Battlescape", "AIModule.cpp"),
+        "void AIModule::setupEscape()\n"
+        "{\n"
+,
+        "void AIModule::setupEscape()\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tAmAiFn_ amFn_(3);   /* 6anc */\n"
+        "#endif\n"
+        ,
+        "ai probe escape")))
+    results.append(("Battlescape/AIModule.cpp (ai probe spotting)", edit(
+        os.path.join(src, "Battlescape", "AIModule.cpp"),
+        "int AIModule::getSpottingUnits(Position pos) const\n"
+        "{\n"
+,
+        "int AIModule::getSpottingUnits(Position pos) const\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tAmAiFn_ amFn_(4);   /* 6anc */\n"
+        "#endif\n"
+        ,
+        "ai probe spotting")))
+    results.append(("Battlescape/AIModule.cpp (ai probe nearestTarget)", edit(
+        os.path.join(src, "Battlescape", "AIModule.cpp"),
+        "int AIModule::selectNearestTarget()\n"
+        "{\n"
+,
+        "int AIModule::selectNearestTarget()\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tAmAiFn_ amFn_(5);   /* 6anc */\n"
+        "#endif\n"
+        ,
+        "ai probe nearestTarget")))
+    results.append(("Battlescape/AIModule.cpp (ai probe evalMode)", edit(
+        os.path.join(src, "Battlescape", "AIModule.cpp"),
+        "void AIModule::evaluateAIMode()\n"
+        "{\n"
+,
+        "void AIModule::evaluateAIMode()\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tAmAiFn_ amFn_(6);   /* 6anc */\n"
+        "#endif\n"
+        ,
+        "ai probe evalMode")))
+    results.append(("Battlescape/AIModule.cpp (ai probe firePoint)", edit(
+        os.path.join(src, "Battlescape", "AIModule.cpp"),
+        "bool AIModule::findFirePoint()\n"
+        "{\n"
+,
+        "bool AIModule::findFirePoint()\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tAmAiFn_ amFn_(7);   /* 6anc */\n"
+        "#endif\n"
+        ,
+        "ai probe firePoint")))
+    results.append(("Battlescape/AIModule.cpp (ai probe explosiveEff)", edit(
+        os.path.join(src, "Battlescape", "AIModule.cpp"),
+        "bool AIModule::explosiveEfficacy(Position targetPos, BattleUnit *attackingUnit, int radius, int diff, bool grenade) const\n"
+        "{\n"
+,
+        "bool AIModule::explosiveEfficacy(Position targetPos, BattleUnit *attackingUnit, int radius, int diff, bool grenade) const\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tAmAiFn_ amFn_(8);   /* 6anc */\n"
+        "#endif\n"
+        ,
+        "ai probe explosiveEff")))
+    results.append(("Battlescape/AIModule.cpp (ai probe psi)", edit(
+        os.path.join(src, "Battlescape", "AIModule.cpp"),
+        "bool AIModule::psiAction()\n"
+        "{\n"
+,
+        "bool AIModule::psiAction()\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tAmAiFn_ amFn_(9);   /* 6anc */\n"
+        "#endif\n"
+        ,
+        "ai probe psi")))
+    results.append(("Battlescape/AIModule.cpp (ai probe bestEfficacyNode)", edit(
+        os.path.join(src, "Battlescape", "AIModule.cpp"),
+        "bool AIModule::getNodeOfBestEfficacy(BattleAction *action)\n"
+        "{\n"
+,
+        "bool AIModule::getNodeOfBestEfficacy(BattleAction *action)\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tAmAiFn_ amFn_(10);   /* 6anc */\n"
+        "#endif\n"
+        ,
+        "ai probe bestEfficacyNode")))
+    results.append(("Battlescape/AIModule.cpp (ai probe pointNearTarget)", edit(
+        os.path.join(src, "Battlescape", "AIModule.cpp"),
+        "bool AIModule::selectPointNearTarget(BattleUnit *target, int maxTUs) const\n"
+        "{\n"
+,
+        "bool AIModule::selectPointNearTarget(BattleUnit *target, int maxTUs) const\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tAmAiFn_ amFn_(11);   /* 6anc */\n"
+        "#endif\n"
+        ,
+        "ai probe pointNearTarget")))
+    results.append(("Battlescape/AIModule.cpp (ai probe waypoint)", edit(
+        os.path.join(src, "Battlescape", "AIModule.cpp"),
+        "void AIModule::wayPointAction()\n"
+        "{\n"
+,
+        "void AIModule::wayPointAction()\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tAmAiFn_ amFn_(12);   /* 6anc */\n"
+        "#endif\n"
+        ,
+        "ai probe waypoint")))
+    results.append(("Battlescape/AIModule.cpp (ai probe grenade)", edit(
+        os.path.join(src, "Battlescape", "AIModule.cpp"),
+        "void AIModule::grenadeAction()\n"
+        "{\n"
+,
+        "void AIModule::grenadeAction()\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tAmAiFn_ amFn_(13);   /* 6anc */\n"
+        "#endif\n"
+        ,
+        "ai probe grenade")))
+    results.append(("BattlescapeGame.cpp (ai function probe decl)", edit(
+        os.path.join(src, "Battlescape", "BattlescapeGame.cpp"),
+        'extern "C" { extern unsigned long AmigaAiPathMs, AmigaAiPathN, AmigaAiThinkMs, AmigaAiThinkN, AmigaMapDrawUs; }\n',
+        'extern "C" { extern unsigned long AmigaAiPathMs, AmigaAiPathN, AmigaAiThinkMs, AmigaAiThinkN, AmigaMapDrawUs; }\n'
+        'extern "C" { extern unsigned long AmigaAiFnMs[16], AmigaAiFnN[16], AmigaAiFnRay[16], AmigaAiFnPath[16]; }\n',
+        "ai function probe decl")))
+    results.append(("BattlescapeGame.cpp (ai function probe print)", edit(
+        os.path.join(src, "Battlescape", "BattlescapeGame.cpp"),
+        "\t\tSDLmini_Log(b_);\n"
+        "\t\tet0_ = n_;\n"
+,
+        "\t\tSDLmini_Log(b_);\n"
+        "\t\tet0_ = n_;\n"
+        "\t\t{   /* 6anc: the AI functions of the side that just ended */\n"
+        "\t\t\tstatic const char *const fn_[] = { \"patrol\", \"ambush\", \"attack\", \"escape\", \"spotting\", \"nearestTarget\", \"evalMode\", \"firePoint\", \"explosiveEff\", \"psi\", \"bestEfficacyNode\", \"pointNearTarget\", \"waypoint\", \"grenade\" };\n"
+        "\t\t\tfor (int k_ = 0; k_ < (int)(sizeof fn_ / sizeof fn_[0]); ++k_)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tif (AmigaAiFnN[k_] == 0) continue;\n"
+        "\t\t\t\tsnprintf(b_, sizeof b_, \"aifn: %-16s %6lu ms %5lu calls %7lu rays %6lu ms path\", fn_[k_], AmigaAiFnMs[k_], AmigaAiFnN[k_], AmigaAiFnRay[k_], AmigaAiFnPath[k_]);\n"
+        "\t\t\t\tSDLmini_Log(b_);\n"
+        "\t\t\t\tAmigaAiFnMs[k_] = AmigaAiFnN[k_] = AmigaAiFnRay[k_] = AmigaAiFnPath[k_] = 0;\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        ,
+        "ai function probe print")))
+
     for root, _dirs, files in os.walk(src):
         for fn in files:
             if not fn.endswith((".cpp", ".h")):
