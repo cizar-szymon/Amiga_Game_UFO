@@ -13213,6 +13213,19 @@ def main():
         ,
         "Mod.cpp (no start conversion: the note)")))
 
+    # 6anf. -amigaConvertOnly 1 is a command-line switch, but every option
+    #       given on the command line ends up in options.cfg when the game
+    #       quits - so after one "convert" (AmiXcomPrefs) every later start of
+    #       the game converted and quit again, menu never shown (found
+    #       2026-11-01 testing 6ane: the next plain start ended in "main: bye").
+    #       Cleared before the quit that saves the options.
+    results.append(("StartState.cpp (convert only: once)", edit(
+        os.path.join(src, "Menu", "StartState.cpp"),
+        "\t\t\tSDLmini_Log(\"convert: music done, quitting\");\n",
+        "\t\t\tSDLmini_Log(\"convert: music done, quitting\");\n"
+        "\t\t\tOptions::amigaConvertOnly = 0;   /* 6anf: not saved as a setting */\n",
+        "convert only once")))
+
     for root, _dirs, files in os.walk(src):
         for fn in files:
             if not fn.endswith((".cpp", ".h")):
