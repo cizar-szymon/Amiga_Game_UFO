@@ -85,6 +85,14 @@ Autor pisze notatki do wydań bardzo rzetelnie: mierzy, zamiast zgadywać, i opi
 - **Natywna wyższa rozdzielczość na RTG (640×400 i więcej):** szczegółowy plan jest w `PLAN-HIRES.md`. Silnik OpenXcom obsługuje większą rozdzielczość bazową (`baseXResolution`, `geoscapeScale`, `battlescapeScale`), więc praca dotyczy głównie warstwy Amigi i optymalizacji portu. Realizuj plan fazami, zaczynając od fazy 0 (rozpoznanie bez zmian w kodzie). Po każdej fazie aktualizuj tabelę pomiarów w `PLAN-HIRES.md`.
 - Ewentualne użycie koprocesora ARM na Warp1260X jest **poza zakresem**.
 
+## Publikacja i muzyka
+
+- Zasady publikacji (co idzie do repo i paczki na GitHubie, a co nigdy): `AmiXcom/PUBLISHING.md`.
+  Bez danych X-COM i bez skonwertowanej muzyki (`user/music/*.raw`); pełna paczka tylko w `releases/`.
+- Muzyka z PC: `MakeMusic` na Amidze (ikona w paczce, budowany przez `build/build.sh`) albo
+  `AmiXcom/tools/music/make_music.py` na PC – ten sam kod co gra; opis i pomiary w
+  `AmiXcom/tools/music/README.md`, dla gracza `release/Install_en/_pl/_de.txt`, krok 3.
+
 ## Czego nie robić
 
 - Nie publikuj binarek z danymi gry ani niczego wyprowadzonego z tych danych.

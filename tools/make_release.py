@@ -4,10 +4,12 @@
 
 -> releases/AmiXcom-<ver>.lha, top folder AmiXcom/. Contains the two RTG
 binaries with the fast allocator (UFO = FPU, UFO-noFPU = soft float), their
-icons (1 MB stack), OpenXcom's data (common/, standard/, translations) and the
-release notes. Never any X-COM data: data/UFO, data/TFTD and data/UFO_AMIGA
-hold only their README files. No .ybc caches, no user/ folder (the first start
-writes the options).
+icons (1 MB stack), MakeMusic and its icon (the music converter, built by
+build.sh), OpenXcom's data (common/, standard/, translations), the install
+texts Install_en/_pl/_de.txt and the release notes. Never any X-COM data:
+data/UFO, data/TFTD and data/UFO_AMIGA hold only their README files, and
+user/ only user/music/ReadMe.txt - never converted music (PUBLISHING.md of the
+port). No .ybc caches (the first start writes the options).
 
   python tools/make_release.py 0.86 --full
 
@@ -47,7 +49,7 @@ def add_full(stage, data):
             shutil.copyfile(s, os.path.join(dst, f))
     music = os.path.join(WORK, 'user', 'music')
     out = os.path.join(stage, 'user', 'music')
-    os.makedirs(out)
+    os.makedirs(out, exist_ok=True)   # the public part made it, with its ReadMe
     tunes = [f for f in os.listdir(music) if f.endswith('.raw')]
     if len(tunes) < 14:
         raise SystemExit('only %d tunes in %s - run the game once to render them' % (len(tunes), music))
@@ -71,6 +73,20 @@ def main():
                     '--size', '72', '64', '--colors', '64', '--stack', '1000000'], check=True)
     for dst in ('UFO.info', 'UFO-noFPU.info'):
         shutil.copyfile(icon, os.path.join(stage, dst))
+
+    # MakeMusic: the game's music conversion as a program (tools/music in the
+    # port), with its own icon - a loudspeaker and notes, drawn
+    shutil.copyfile(os.path.join(WORK, 'MakeMusic'), os.path.join(stage, 'MakeMusic'))
+    pic = os.path.join(OUT, 'makemusic.png')
+    subprocess.run([sys.executable, os.path.join(UFO, 'tools', 'draw_makemusic_icon.py'), pic], check=True)
+    subprocess.run([sys.executable, os.path.join(UFO, 'tools', 'make_icon.py'), os.path.join(stage, 'MakeMusic.info'),
+                    '--frame', pic, '--crop', '0', '0', '54', '44', '--colors', '32', '--stack', '65536',
+                    '--tooltypes', '(SOURCE=ADLIB)', '(GAME=TFTD)', '(QUALITY=PLAIN)', '(SOUND=PROGDIR:data/UFO/SOUND)',
+                    '(TO=PROGDIR:user/music)'], check=True)
+    os.makedirs(os.path.join(stage, 'user', 'music'))
+    text_for_amiga(os.path.join(REL, 'MUSIC_ReadMe.txt'), os.path.join(stage, 'user', 'music', 'ReadMe.txt'), 'ascii')
+    for lang, enc in (('en', 'ascii'), ('pl', 'iso-8859-2'), ('de', 'iso-8859-1')):
+        text_for_amiga(os.path.join(REL, 'Install_%s.txt' % lang), os.path.join(stage, 'Install_%s.txt' % lang), enc)
 
     data = os.path.join(stage, 'data')
     ign = shutil.ignore_patterns('*.ybc')
