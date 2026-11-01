@@ -3,7 +3,7 @@
 # (tools\make-pkg.ps1 + put + lha x). These are the numbers that count.
 #   .\perf-real.ps1 -Scene battle -Res 320 [-Binary openxcom-rtg] [-Tag r1]
 param(
-    [Parameter(Mandatory=$true)][ValidateSet('battle','geo','geoq','scroll','inv','geohold')][string]$Scene,
+    [Parameter(Mandatory=$true)][ValidateSet('battle','geo','geoq','scroll','inv','geohold','late','peek','turns','turnsl')][string]$Scene,
     [Parameter(Mandatory=$true)][ValidateSet('320','640','n640','mixed','w480')][string]$Res,
     [string]$Binary = 'openxcom-rtg',
     [string]$Tag = '',
@@ -14,7 +14,8 @@ param(
     [int]$FrameSkip = -1,       # amigaFrameSkip 0/1/2; -1 = leave options.cfg alone
     [string]$QuickSave = 'geoscape5sec.sav',  # geoq: the save F9 loads
     [string]$Extra = '',        # more options.cfg values: 'amigaMapVerify=1;amigaScrollOwn=false'
-    [string]$Config = ''        # AmiAgent config of another Amiga, e.g. C:/amiga-dev/amiagent-2.cfg
+    [string]$Config = '',       # AmiAgent config of another Amiga, e.g. C:/amiga-dev/amiagent-2.cfg
+    [string]$BattleCfg = ''     # a battle.cfg (tools\make_battlecfg.py) for the auto battle; the player's is put back
 )
 
 $ufo    = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
@@ -45,12 +46,17 @@ if ("$t" -match 'AmiXcom( 68K| \d)') { "FAIL: AmiXcom is already running on the 
 python @remote get "$Dir/user/options.cfg" "$tmp\options.cfg" | Out-Null
 Copy-Item "$tmp\options.cfg" "$tmp\options-player.cfg" -Force   # put back after the run
 $opt = [IO.File]::ReadAllText("$tmp\options.cfg")
-$opt = Set-Options $opt ((Get-ModeOptions $Res) + @(,@('amigaPerfLog', 1)) + @(,@('amigaMusic', 0)) +
+$opt = Set-Options $opt ((Get-ModeOptions $Res) + @(,@('amigaPerfLog', 1)) + @(,@('amigaMusic', 0)) + @(,@('playIntro', 'false')) +
                          @(,@('amigaAutoBattle', $(if ($Scene -notin 'geo','geohold') { 1 } else { 0 }))))
 if ($FrameSkip -ge 0) { $opt = Set-Options $opt @(,@('amigaFrameSkip', $FrameSkip)) }
 foreach ($kv in ($Extra -split ';' | Where-Object { $_ })) { $k, $v = $kv -split '=', 2; $opt = Set-Options $opt @(,@($k, $v)) }
 Lf "$tmp\options.cfg" $opt
 python @remote put "$tmp\options.cfg" "$Dir/user/options.cfg" | Out-Null
+if ($BattleCfg) {
+    python @remote run "Copy $Dir/user/xcom1/battle.cfg TO $Dir/user/xcom1/battle.cfg.player" | Out-Null
+    python @remote run "Delete $Dir/user/xcom1/battle.cfg.ybc QUIET" | Out-Null
+    python @remote put $BattleCfg "$Dir/user/xcom1/battle.cfg" | Out-Null
+}
 if ($Scene -eq 'geoq') {
     # the player's Geoscape save becomes the quick save that F9 loads
     python @remote run "Copy $Dir/user/xcom1/$QuickSave TO $Dir/user/xcom1/_quick_.asav" | Out-Null
@@ -92,6 +98,10 @@ python @remote run "Delete $Dir/autoinput.on $Dir/autoinput.txt QUIET" | Out-Nul
 # it: put the player's own file back, exactly as it was before the run.
 if (-not $KeepOptions) {
     python @remote put "$tmp\options-player.cfg" "$Dir/user/options.cfg" | Out-Null
+}
+if ($BattleCfg) {
+    python @remote run "Copy $Dir/user/xcom1/battle.cfg.player TO $Dir/user/xcom1/battle.cfg" | Out-Null
+    python @remote run "Delete $Dir/user/xcom1/battle.cfg.player $Dir/user/xcom1/battle.cfg.ybc QUIET" | Out-Null
 }
 if ($Scene -eq 'geoq') { python @remote run "Delete $Dir/user/xcom1/_quick_.asav QUIET" | Out-Null }
 

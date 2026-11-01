@@ -39,6 +39,54 @@ function Get-PerfScript([string]$Scene, [string]$Res) {
         $s.Add("wait 14")                                                            # phase 14: scroll left/up
         for ($i = 0; $i -lt 40; $i++) { $s.Add("key left"); $s.Add("wait 150"); $s.Add("key up"); $s.Add("wait 150") }
         $s.Add("move $(P 160 70)"); $s.Add("wait 15"); $s.Add("wait 3000")
+    } elseif ($Scene -eq 'turns') {
+        # alien turns only, measured by the game (endturn: side N took M ms):
+        # each turn gets 120 s, longer than any measured alien + civilian turn,
+        # so no click or key lands inside one
+        $s.Add("wait 5000"); $s.Add("click $(P 160 100)"); $s.Add("wait 5000")     # dismiss "TURN 1"
+        $s.Add("wait 14")
+        for ($t = 0; $t -lt 3; $t++) {
+            # the "TURN n - SIDE: Aliens" screen waits for a click (skipNextTurnScreen
+            # off), and its wait counts in the aliens' side: click it at once
+            $s.Add("key backspace"); $s.Add("wait 3000"); $s.Add("click $(P 160 100)"); $s.Add("wait 120000")
+            $s.Add("click $(P 160 100)"); $s.Add("wait 4000"); $s.Add("click $(P 160 100)"); $s.Add("wait 4000")
+        }
+        $s.Add("wait 15"); $s.Add("wait 2000")
+    } elseif ($Scene -eq 'turnsl') {
+        # 'turns' from a loaded battle save (amigaAutoLoad): no "TURN 1" screen to
+        # click away - a click on the map would order a walk
+        $s.Add("wait 8000"); $s.Add("wait 14")
+        for ($t = 0; $t -lt 3; $t++) {
+            $s.Add("key backspace"); $s.Add("wait 3000"); $s.Add("click $(P 160 100)"); $s.Add("wait 120000")
+            $s.Add("click $(P 160 100)"); $s.Add("wait 4000"); $s.Add("click $(P 160 100)"); $s.Add("wait 4000")
+        }
+        $s.Add("wait 15"); $s.Add("wait 2000")
+    } elseif ($Scene -eq 'peek') {
+        # the battle as it starts, held still for screenshots taken from outside
+        $s.Add("wait 5000"); $s.Add("click $(P 160 100)"); $s.Add("wait 40000")
+    } elseif ($Scene -eq 'late') {
+        # A late-game battle (battle.cfg from tools\make_battlecfg.py: terror
+        # units, power/flying suits, tanks). No debug mode: in debug mode the
+        # player takes over the aliens after their AI moves, so the alien
+        # turns would not be the ones a player sees.
+        $s.Add("wait 5000"); $s.Add("click $(P 160 100)"); $s.Add("wait 5000")     # dismiss "TURN 1"
+        $s.Add("key tab"); $s.Add("wait 2000"); $s.Add("move $(P 160 70)")
+        $s.Add("wait 11"); $s.Add("wait 15000")                                      # phase 11: idle, all units visible
+        $s.Add("wait 12")                                                            # phase 12: cursor moves
+        for ($i = 0; $i -lt 60; $i++) {
+            $x = 40 + ($i * 37) % 240; $y = 20 + ($i * 23) % 110
+            $s.Add("move $(P $x $y)"); $s.Add("wait 120")
+        }
+        $s.Add("move $(P 160 70)")
+        $s.Add("wait 13")                                                            # phase 13: scroll
+        for ($i = 0; $i -lt 20; $i++) { $s.Add("key right"); $s.Add("wait 150"); $s.Add("key down"); $s.Add("wait 150") }
+        for ($i = 0; $i -lt 20; $i++) { $s.Add("key left"); $s.Add("wait 150"); $s.Add("key up"); $s.Add("wait 150") }
+        $s.Add("wait 14")                                                            # phase 14: five alien turns
+        for ($t = 0; $t -lt 5; $t++) {
+            $s.Add("key backspace"); $s.Add("wait 35000")
+            $s.Add("click $(P 160 100)"); $s.Add("wait 3000"); $s.Add("click $(P 160 100)"); $s.Add("wait 3000")
+        }
+        $s.Add("wait 15"); $s.Add("wait 3000")
     } elseif ($Scene -eq 'scroll') {
         # continuous scrolling, as with the mouse at the screen edge: key after
         # key with no gap - autoinput holds each one ~120 ms, the map scrolls
