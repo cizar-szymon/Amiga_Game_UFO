@@ -8,6 +8,14 @@ icons (1 MB stack), OpenXcom's data (common/, standard/, translations) and the
 release notes. Never any X-COM data: data/UFO, data/TFTD and data/UFO_AMIGA
 hold only their README files. No .ybc caches, no user/ folder (the first start
 writes the options).
+
+  python tools/make_release.py 0.86 --full
+
+-> releases/AmiXcom-<ver>-full-PRIVATE.lha: the same plus the player's own
+game data (work/data/UFO, the Amiga music in data/UFO-Amiga/Music) and the
+pre-rendered music (work/user/music/*.raw + source.txt), so the first start
+on another Amiga needs no copying and no conversion. For the owner's own
+machines only - never published.
 """
 import os
 import shutil
@@ -25,8 +33,31 @@ def text_for_amiga(src, dst, encoding):
     open(dst, 'wb').write(t.encode(encoding))
 
 
+def add_full(stage, data):
+    """The owner's game data and the converted music (private archive)."""
+    shutil.rmtree(os.path.join(data, 'UFO'))
+    shutil.copytree(os.path.join(WORK, 'data', 'UFO'), os.path.join(data, 'UFO'))
+    amiga = os.path.join(os.path.dirname(WORK), 'data', 'UFO-Amiga', 'Music')
+    dst = os.path.join(data, 'UFO_AMIGA')
+    for f in os.listdir(amiga):
+        s = os.path.join(amiga, f)
+        if os.path.isdir(s):
+            shutil.copytree(s, os.path.join(dst, f))
+        else:
+            shutil.copyfile(s, os.path.join(dst, f))
+    music = os.path.join(WORK, 'user', 'music')
+    out = os.path.join(stage, 'user', 'music')
+    os.makedirs(out)
+    tunes = [f for f in os.listdir(music) if f.endswith('.raw')]
+    if len(tunes) < 14:
+        raise SystemExit('only %d tunes in %s - run the game once to render them' % (len(tunes), music))
+    for f in tunes + ['source.txt']:
+        shutil.copyfile(os.path.join(music, f), os.path.join(out, f))
+
+
 def main():
     ver = sys.argv[1]
+    full = '--full' in sys.argv[2:]
     stage_root = os.path.join(OUT, 'stage')
     stage = os.path.join(stage_root, 'AmiXcom')
     shutil.rmtree(stage_root, ignore_errors=True)
@@ -56,15 +87,17 @@ def main():
     text_for_amiga(os.path.join(REL, 'AmiXcom_release.txt'), os.path.join(stage, 'AmiXcom_release.txt'), 'iso-8859-2')
     text_for_amiga(os.path.join(REL, 'AmiXcom_release_en.txt'), os.path.join(stage, 'AmiXcom_release_en.txt'), 'ascii')
 
+    if full:
+        add_full(stage, data)
     # nothing of the player's may slip in
     for root, _dirs, files in os.walk(data):
         for f in files:
             p = os.path.relpath(os.path.join(root, f), data).replace('\\', '/')
             top = p.split('/')[0]
-            if top in ('UFO', 'TFTD', 'UFO_AMIGA') and not p.endswith('README.txt'):
+            if not full and top in ('UFO', 'TFTD', 'UFO_AMIGA') and not p.endswith('README.txt'):
                 raise SystemExit('game data in the stage: ' + p)
 
-    arc = 'AmiXcom-%s.lha' % ver
+    arc = 'AmiXcom-%s%s.lha' % (ver, '-full-PRIVATE' if full else '')
     if os.path.exists(os.path.join(OUT, arc)):
         os.remove(os.path.join(OUT, arc))
     subprocess.run(['docker', 'run', '--rm', '-v', '%s:/o' % OUT, 'amixcom-build', 'sh', '-c',
