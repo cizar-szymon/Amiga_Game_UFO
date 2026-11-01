@@ -380,6 +380,35 @@ m68k-amigaos-gcc -O1 -mcpu=68020 -msoft-float -noixemul -fomit-frame-pointer -Wa
 cp "$WORK/AmiXcomPrefs" "$DEPLOY/AmiXcomPrefs"
 ls -la "$WORK/AmiXcomPrefs"
 
+# MakeMusic (tools/music/makemusic.cpp): the game's music conversion as a
+# program of its own, as OpenDUNE has it - run once from its icon, or again
+# for the other source. The same code as the game: native/amiga_music.c and
+# the patched Engine/Adlib of THIS tree. Soft float like UFO-noFPU, so it runs
+# on every machine the game runs on; fp_*.c ahead of -lm as for the game
+# (Kickstart's single-precision Mul/Div, top of this file). Never stripped.
+log "compiling MakeMusic"
+MM="$WORK/makemusic"
+mkdir -p "$MM"
+MMF="-O1 -mcpu=68020 -msoft-float -mtune=68060 -noixemul -fomit-frame-pointer -w -D__AMIGA__ -I$NATIVE -I$SRC/src/Engine/Adlib"
+for f in fp_conv.c fp_single.c fp_double.c; do
+	m68k-amigaos-gcc $MMF -fno-builtin -c "$NATIVE/$f" -o "$MM/${f%.c}.o" || { log "BUILD FAILED: MakeMusic $f"; exit 1; }
+done
+m68k-amigaos-gcc $MMF -c "$NATIVE/amiga_music.c" -o "$MM/amiga_music.o" &&
+m68k-amigaos-g++ $MMF -std=gnu++11 -fpermissive -c "$SRC/src/Engine/Adlib/fmopl.cpp" -o "$MM/fmopl.o" &&
+m68k-amigaos-g++ $MMF -std=gnu++11 -fpermissive -c "$SRC/src/Engine/Adlib/adlplayer.cpp" -o "$MM/adlplayer.o" &&
+m68k-amigaos-g++ $MMF -std=gnu++11 -fpermissive -o "$WORK/MakeMusic" "$REPO/tools/music/makemusic.cpp" \
+	"$MM/fp_conv.o" "$MM/fp_single.o" "$MM/fp_double.o" "$MM/amiga_music.o" "$MM/fmopl.o" "$MM/adlplayer.o" -lm || {
+	log "BUILD FAILED: MakeMusic"; exit 1; }
+cp "$WORK/MakeMusic" "$DEPLOY/MakeMusic"
+ls -la "$WORK/MakeMusic"
+# the PC build (tools/music/make_music.py) uses a copy of the player: it has
+# to be the game's, or the PC would convert something else
+for f in adlplayer.cpp adlplayer.h fmopl.cpp fmopl.h; do
+	cmp -s "$SRC/src/Engine/Adlib/$f" "$REPO/tools/music/adlib/$f" ||
+		log "WARNING: tools/music/adlib/$f is not the game's Engine/Adlib/$f - copy it over"
+done
+# (end of MakeMusic)
+
 # The game's own data (rulesets, languages, shaders) lives in bin/ upstream and
 # is what "PROGDIR:data/" resolves to on the Amiga side. Copied without
 # overwriting, so the original X-COM files the player drops into data/UFO and

@@ -17,3 +17,7 @@ Thumbs.db
 
 # build number, written by the build script on the host
 native/amiga_buildid.h
+
+# the PC build of MakeMusic (tools/music/make_music.py)
+tools/music/.build/
+tools/music/__pycache__/
