@@ -3,7 +3,7 @@
 # (tools\make-pkg.ps1 + put + lha x). These are the numbers that count.
 #   .\perf-real.ps1 -Scene battle -Res 320 [-Binary openxcom-rtg] [-Tag r1]
 param(
-    [Parameter(Mandatory=$true)][ValidateSet('battle','geo','geoq','scroll','inv','geohold','late','peek','turns','turnsl')][string]$Scene,
+    [Parameter(Mandatory=$true)][ValidateSet('battle','geo','geoq','scroll','inv','geohold','late','peek','turns','turnsl','abortrep')][string]$Scene,
     [Parameter(Mandatory=$true)][ValidateSet('320','640','n640','mixed','w480')][string]$Res,
     [string]$Binary = 'openxcom-rtg',
     [string]$Tag = '',

@@ -61,6 +61,13 @@ function Get-PerfScript([string]$Scene, [string]$Res) {
             $s.Add("click $(P 160 100)"); $s.Add("wait 4000"); $s.Add("click $(P 160 100)"); $s.Add("wait 4000")
         }
         $s.Add("wait 15"); $s.Add("wait 2000")
+    } elseif ($Scene -eq 'abortrep') {
+        # the abort-mission window over a loaded battle (bug report 1.11.2026):
+        # raw screen coordinates of the 640x480 battle; F10 writes what the
+        # display shows
+        $s.Add("wait 8000"); $s.Add("move 320 200"); $s.Add("wait 2000")
+        $s.Add("click 416 451"); $s.Add("wait 3000"); $s.Add("key f10"); $s.Add("wait 4000")
+        $s.Add("click 404 258"); $s.Add("wait 3000"); $s.Add("key f10"); $s.Add("wait 4000")
     } elseif ($Scene -eq 'peek') {
         # the battle as it starts, held still for screenshots taken from outside
         $s.Add("wait 5000"); $s.Add("click $(P 160 100)"); $s.Add("wait 40000")
