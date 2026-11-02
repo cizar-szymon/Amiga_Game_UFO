@@ -73,19 +73,27 @@ precomputed shadow tables.
 Earlier releases and their numbers are on the
 [releases page](https://github.com/angree/AmiXcom/releases).
 
-Known problems and gaps:
+Known problems and gaps - this fork, release 0.100 (2026-11-02), Warp RTG:
 
-- **~50 MB of fast RAM required**; 32 MB machines still run out while loading.
-- **Music is new** and lightly tested. If it misbehaves, *Options → Amiga → Music*
-  turns it off.
-- **AGA, 320x200, 8-bit.** The RTG build (`openxcom-rtg`) compiles and has had far less
-  testing; the `-ask` build asks which to use at startup.
-- **Keyboard text entry is broken** (every key types the same character). The mouse
-  works and the game is playable with it.
-- Loading is still slow, and save-list dates show "????".
-- An FPS counter is drawn in the corner on purpose, as a measurement aid.
-- Developed in WinUAE. Real-hardware reports are welcome and have already fixed two
-  bugs no emulator here reproduces.
+- **Fast RAM: 64 MB or more.** Smaller machines run out while loading.
+- **Loading and saving are no longer slow** on a Warp 060: the game is ready after
+  about 30 s (the UFO intro plays meanwhile), a battle save loads in about 6 s,
+  saving takes 0.14 s on the Geoscape and under half a second in a battle.
+- **Save list dates show "?????"** in 0.100 - fixed for the next release (they come
+  from the Amiga's clock; an Amiga with no set clock shows 1978-01-01).
+- **With a tank (2x2) selected** the picture under the blue part of the cursor can be
+  out of date - fixed for the next release, as are a thin strip a soldier left on the
+  map right after walking, the loading screen opening at 640x480 after a game closed
+  in a battle, and an F10 save taken while a unit was moving (loaded, the next order
+  flew the unit into the map corner and could crash the Amiga). The fixes are in
+  testing on a Warp4070.
+- **AGA** builds still compile, but this fork is made and tested for Warp RTG only.
+- **Terror from the Deep** music through `MakeMusic` (`GAME=TFTD`) has not been tried
+  with the TFTD files yet.
+- An FPS counter can be shown in the corner (*Options → Amiga*); it counts only the
+  frames that changed, so a still screen shows a low number.
+- Tested on real hardware (Warp1260, Warp4070) - reports from players with F10 bug
+  reports found most of the bugs fixed since 0.86.
 
 ### Languages
 
