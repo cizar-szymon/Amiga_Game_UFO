@@ -13511,6 +13511,142 @@ def main():
         ,
         "walk from tile")))
 
+    # 6anm. Loading screen at the Geoscape size with amigaNativeScale (user
+    #       F10 report 2026-11-02: after a session that ended in a battle the
+    #       next start opened 640x480, and the loading picture with its bar
+    #       was drawn 320x200 in the corner).
+    results.append(("main.cpp (start res include)", edit(
+        os.path.join(src, "main.cpp"),
+        "#include \"Menu/StartState.h\"\n"
+        ,
+        "#include \"Menu/StartState.h\"\n"
+        "#include \"Engine/Screen.h\"   /* 6anm */\n"
+        ,
+        "start res include")))
+    results.append(("main.cpp (start res main)", edit(
+        os.path.join(src, "main.cpp"),
+        "\tOptions::baseXResolution = Options::displayWidth;\n"
+        "\tOptions::baseYResolution = Options::displayHeight;\n"
+        "\n"
+        ,
+        "\tOptions::baseXResolution = Options::displayWidth;\n"
+        "\tOptions::baseYResolution = Options::displayHeight;\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* 6anm: with amigaNativeScale the loading screen opens at the Geoscape\n"
+        "\t * size, as the menus after it do - not at the size the last session\n"
+        "\t * ended in (640x480 after quitting from a battle), where the 320x200\n"
+        "\t * loading picture sat small in a corner of a hires screen */\n"
+        "\tif (Options::amigaNativeScale)\n"
+        "\t{\n"
+        "\t\tOptions::newDisplayWidth = Options::displayWidth;\n"
+        "\t\tOptions::newDisplayHeight = Options::displayHeight;\n"
+        "\t\tScreen::updateScale(Options::geoscapeScale, Options::geoscapeScale, Options::baseXGeoscape, Options::baseYGeoscape, false);\n"
+        "\t\tOptions::baseXResolution = Options::baseXGeoscape;\n"
+        "\t\tOptions::baseYResolution = Options::baseYGeoscape;\n"
+        "\t}\n"
+        "#endif\n"
+        "\n"
+        ,
+        "start res main")))
+    results.append(("Menu/StartState.cpp (start res state)", edit(
+        os.path.join(src, "Menu", "StartState.cpp"),
+        "\tOptions::baseXResolution = Options::displayWidth;\n"
+        "\tOptions::baseYResolution = Options::displayHeight;\n"
+        "\t_game->getScreen()->resetDisplay(false);\n"
+        ,
+        "\tOptions::baseXResolution = Options::displayWidth;\n"
+        "\tOptions::baseYResolution = Options::displayHeight;\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* 6anm: with amigaNativeScale the loading screen opens at the Geoscape\n"
+        "\t * size, as the menus after it do - not at the size the last session\n"
+        "\t * ended in (640x480 after quitting from a battle), where the 320x200\n"
+        "\t * loading picture sat small in a corner of a hires screen */\n"
+        "\tif (Options::amigaNativeScale)\n"
+        "\t{\n"
+        "\t\tOptions::newDisplayWidth = Options::displayWidth;\n"
+        "\t\tOptions::newDisplayHeight = Options::displayHeight;\n"
+        "\t\tScreen::updateScale(Options::geoscapeScale, Options::geoscapeScale, Options::baseXGeoscape, Options::baseYGeoscape, false);\n"
+        "\t\tOptions::baseXResolution = Options::baseXGeoscape;\n"
+        "\t\tOptions::baseYResolution = Options::baseYGeoscape;\n"
+        "\t}\n"
+        "#endif\n"
+        "\t_game->getScreen()->resetDisplay(false);\n"
+        ,
+        "start res state")))
+
+    # 6ann. amigaAutoBattle skipped the pre-battle inventory, and with it
+    #       resetUnitTiles: the units stayed registered on the craft's
+    #       inventory tile (see the comment in the patch).
+    results.append(("Battlescape/BriefingState.cpp (auto battle deploy includes)", edit(
+        os.path.join(src, "Battlescape", "BriefingState.cpp"),
+        "#include \"../Menu/CutsceneState.h\"\n"
+        ,
+        "#include \"../Menu/CutsceneState.h\"\n"
+        "#ifdef __AMIGA__\n"
+        "#include \"../Savegame/BattleUnit.h\"\n"
+        "#include \"../Savegame/Tile.h\"\n"
+        "#endif\n"
+        ,
+        "auto battle deploy includes")))
+    results.append(("Battlescape/BriefingState.cpp (auto battle deploy)", edit(
+        os.path.join(src, "Battlescape", "BriefingState.cpp"),
+        "#ifdef __AMIGA__\n"
+        "\t\tif (!Options::amigaAutoBattle)   /* straight into the battle */\n"
+        "#endif\n"
+        "\t\t_game->pushState(new InventoryState(false, bs));\n"
+        ,
+        "#ifdef __AMIGA__\n"
+        "\t\tif (Options::amigaAutoBattle)\n"
+        "\t\t{\n"
+        "\t\t\t/* 6ann: straight into the battle, but with what the skipped\n"
+        "\t\t\t * pre-battle inventory does on OK (InventoryState::btnOkClick).\n"
+        "\t\t\t * The generator parks every X-COM unit on the craft's inventory\n"
+        "\t\t\t * tile for the equipping; resetUnitTiles puts them back on their\n"
+        "\t\t\t * own tiles. Without it the tile under the first tank kept the\n"
+        "\t\t\t * last soldier: a soldier drawn inside the hovertank's 2x2, a\n"
+        "\t\t\t * tank that could not move and a unit nobody could select (user\n"
+        "\t\t\t * report 2026-11-02, every generated battle with tanks). */\n"
+        "\t\t\tSavedBattleGame *sb_ = _game->getSavedGame()->getSavedBattle();\n"
+        "\t\t\tTile *inv_ = sb_->getSelectedUnit() ? sb_->getSelectedUnit()->getTile() : 0;\n"
+        "\t\t\tsb_->resetUnitTiles();\n"
+        "\t\t\tif (sb_->getTurn() == 1 && inv_ != 0)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tsb_->randomizeItemLocations(inv_);\n"
+        "\t\t\t\tif (inv_->getUnit()) sb_->setSelectedUnit(inv_->getUnit());   /* the unit nearest the ramp */\n"
+        "\t\t\t}\n"
+        "\t\t\tfor (std::vector<BattleUnit*>::iterator j_ = sb_->getUnits()->begin(); j_ != sb_->getUnits()->end(); ++j_)\n"
+        "\t\t\t\tif ((*j_)->getOriginalFaction() == FACTION_PLAYER && !(*j_)->isOut()) (*j_)->prepareNewTurn();\n"
+        "\t\t}\n"
+        "\t\telse\n"
+        "#endif\n"
+        "\t\t_game->pushState(new InventoryState(false, bs));\n"
+        ,
+        "auto battle deploy")))
+
+    # 6ano. A unit saved mid-step (F10) comes back standing, not walking
+    #       toward a destination the save does not hold.
+    results.append(("Savegame/BattleUnit.cpp (load mid-step)", edit(
+        os.path.join(src, "Savegame", "BattleUnit.cpp"),
+        "\t_status = (UnitStatus)node[\"status\"].as<int>(_status);\n"
+        "\t_pos = node[\"position\"].as<Position>(_pos);\n"
+        ,
+        "\t_status = (UnitStatus)node[\"status\"].as<int>(_status);\n"
+        "\t_pos = node[\"position\"].as<Position>(_pos);\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* 6ano: a save taken in the middle of a step (the F10 bug report saves\n"
+        "\t * at any moment; the menus cannot) holds a walking or flying status but\n"
+        "\t * not the destination. Loaded like that, the next move order went on\n"
+        "\t * with the step and its destination was (0,0,0): a hovertank flown into\n"
+        "\t * the map corner in one step, then a corrupted picture and a reset\n"
+        "\t * (user report 2026-11-02, bug004.sav). The unit stops where it is -\n"
+        "\t * a flying unit hovers standing, as after any finished step. */\n"
+        "\tif (_status == STATUS_WALKING || _status == STATUS_FLYING) _status = STATUS_STANDING;\n"
+        "\t_destination = _pos;\n"
+        "\t_lastPos = _pos;\n"
+        "#endif\n"
+        ,
+        "load mid-step")))
+
     # 6anj. The cursor is not drawn while the mouse is over the icons
     #       (drawTerrain asks BattlescapeState::getMouseOverIcons), and the map
     #       cache did not know: moving onto the icons left the cursor in the

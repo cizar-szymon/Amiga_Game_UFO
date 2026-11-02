@@ -271,11 +271,18 @@ time_t getDateModified(const std::string &path)
 
 std::pair<std::wstring, std::wstring> timeToString(time_t time)
 {
-	wchar_t localDate[25], localTime[25];
-
+	/* Formatted by hand: libnix's wcsftime gave "?????" for every save in
+	 * the load and save lists (user report 2026-11-02). The digits are
+	 * plain ASCII, so a narrow snprintf widened character by character is
+	 * exact. */
+	char date_[16] = "", clock_[8] = "";
 	struct tm *timeinfo = localtime(&(time));
-	wcsftime(localDate, 25, L"%Y-%m-%d", timeinfo);
-	wcsftime(localTime, 25, L"%H:%M", timeinfo);
+	if (timeinfo != 0)
+	{
+		snprintf(date_, sizeof date_, "%04d-%02d-%02d", timeinfo->tm_year + 1900, timeinfo->tm_mon + 1, timeinfo->tm_mday);
+		snprintf(clock_, sizeof clock_, "%02d:%02d", timeinfo->tm_hour, timeinfo->tm_min);
+	}
+	std::wstring localDate(date_, date_ + strlen(date_)), localTime(clock_, clock_ + strlen(clock_));
 
 	return std::make_pair(localDate, localTime);
 }
