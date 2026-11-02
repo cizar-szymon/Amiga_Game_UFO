@@ -1,0 +1,125 @@
+AmiXcom 0.106 beta - OpenXcom (UFO: Enemy Unknown / X-COM) na Amigê z kart± Warp
+============================================================================
+
+Wydanie 0.106, 2.11.2026. "0" oznacza wersjê beta; wydania oficjalne bêd±
+mia³y numer 1.xx. Numer widaæ w menu g³ównym ("Version RTG 0.106") i po
+poleceniu Shella "Version UFO".
+
+ZG£ASZANIE B£ÊDÓW
+-----------------
+Naci¶nij F10 w grze, gdy b³±d jest na ekranie. Powstaj± pliki
+user/xcom1/bugNNN.png (ekran), bugNNN.txt (co robi³a gra) i bugNNN.sav
+(zapis gry). Wy¶lij je razem z sdlmini.log, user/openxcom.log i numerem
+wydania. Help robi zwyk³y zrzut ekranu.
+
+CO JEST W ARCHIWUM
+------------------
+UFO            gra dla 68040/68060 Z FPU (w³a¶ciwa dla kart Warp)
+UFO-noFPU      ta sama gra bez kodu FPU: 68020/68030, LC060/EC060
+MakeMusic      robi muzykê gry z Twoich plików X-COM (Install_pl.txt, krok 3)
+Install_pl.txt instalacja krok po kroku (tak¿e _en, _de)
+data/          dane samego OpenXcom, t³umaczenia, instrumenty muzyki
+data/UFO/      puste - tu trafiaj± dane gry X-COM (ni¿ej)
+data/TFTD/     puste - dane Terror from the Deep, opcjonalnie
+data/UFO_AMIGA puste - pliki amigowej wersji UFO, opcjonalnie
+
+Archiwum nie zawiera danych gry X-COM: potrzebna jest w³asna kopia gry na
+PC (wersje z GOG i Steam dzia³aj±).
+
+WYMAGANIA
+---------
+- Port przeznaczony dla Amigi 500 / 1200 / 3000 / 4000 z kart± Warp (Warp 560,
+  1240, 1260, 1260 Extreme, 4070); testowany na A1200 z Warp 1260 Extreme
+  i A4000 z Warp 4070 (68060, AmigaOS 3.2). Podane ni¿ej prêdko¶ci daje
+  szybka karta graficzna Warpa; inne Amigi z 68040/68060 i kart± RTG
+  uruchomi± grê, ale wolniej.
+- Karta graficzna RTG z 8-bitowym trybem ekranu (Picasso96 / CyberGraphX).
+- UFO wymaga 68040/68060 z FPU; UFO-noFPU dzia³a na 68020/68030, LC060.
+- Du¿o Fast RAM: 64 MB lub wiêcej.
+- Dysk: ~43 MB po rozpakowaniu (archiwum 16 MB), ~40 MB na dane gry, ~35 MB na muzykê z PC
+  (robi j± raz MakeMusic, Install_pl.txt, krok 3).
+
+INSTALACJA
+----------
+1. Rozpakuj archiwum w dowolnym miejscu, np. w Shellu
+   UnZip AmiXcom-0.106.zip -d Work:Games  ->  Work:Games/AmiXcom/
+2. Skopiuj z gry na PC katalogi
+     GEODATA GEOGRAPH MAPS ROUTES SOUND TERRAIN UFOGRAPH UNITS
+   do data/UFO/. Dla intro do³ó¿ te¿ UFOINTRO.
+3. Opcjonalnie - muzyka i efekty z amigowej wersji UFO: skopiuj ze swoich
+   dyskietek amigowego UFO do data/UFO_AMIGA/ pliki
+     Defend.mus EnBase.mus Geo.mus Inter.mus Lose.mus Mars.mus NewMars.mus
+     Story.mus Win.mus UFO.bank   oraz katalogi TacticalFX GeoScapeFX
+   Potem w Options -> Amiga ustaw MUZYKA = Amiga i EFEKTY D¬WIÊKOWE = Amiga.
+4. Kliknij dwa razy UFO (albo UFO-noFPU). Ikona daje grze 1 MB stosu;
+   z Shella: Stack 1000000, potem UFO.
+   Muzykê z PC robi raz MakeMusic (Install_pl.txt, krok 3); sama gra jej
+   nie konwertuje.
+
+KLAWISZE
+--------
+F10            zg³oszenie b³êdu (wy¿ej)
+Help           zrzut ekranu
+Esc / mysz     pomija intro
+Prawy górny róg ekranu, 2x2 piksele: klikniêcie prze³±cza na Workbench.
+
+OPTIONS -> AMIGA
+----------------
+Odkrywanie mapy, Dzielone obliczenia ruchu, Muzyka (Wy³±czona / Amiga /
+Gra PC), ¬ród³o muzyki (Próbki / AdLib), Efekty d¼wiêkowe (Gra PC / Amiga),
+Jêzyk z Workbencha, Pokazuj FPS. Na górze: karta Warp, jej firmware i zegar
+CPU (z SYS:C/WarpTool, je¶li jest).
+Options -> Video (Obraz): "WARP RTG 320x200 / 640x400" i "... / 640x480":
+Geoscape na ekranie 320x200, bitwy natywnie w 640x400 albo 640x480.
+
+SZYBKO¦Æ (Warp 1260, 68060 100 MHz)
+-----------------------------------
+- Bitwy 640x400 / 640x480: ok. 50 kl./s w bezruchu, 33-37 kl./s przy
+  przewijaniu, 28 kl./s podczas marszu ¿o³nierzy; du¿a jednostka (Sectopod,
+  Reaper, Cyberdisc, czo³gi X-COM) my¶li w turze obcych najwy¿ej ok. 2 s.
+- Geoscape: ok. 49 kl./s przy p³yn±cym czasie; spokojny krok 1 DAY 0,3 s.
+- Zapis: 0,14 s na Geoscape, poni¿ej pó³ sekundy w bitwie; wczytanie
+  zapisu ok. 6 s; od ikony do menu ok. 30 s.
+
+HISTORIA WYDAÑ
+--------------
+0.106 (2.11.2026)
+- Wydanie to archiwum ZIP (UnZip na Amidze) w repozytorium, katalog
+  releases/amiga; opisy maj± ikony otwieraj±ce je w MultiView.
+- Lista zapisów pokazuje datê i godzinê ka¿dego zapisu, z zegara Amigi.
+- Gra wczytuje siê na ekranie 320x200 (rozmiar Geoscape) niezale¿nie od
+  tego, na jakim ekranie skoñczy³a siê poprzednia gra; bitwy otwieraj± siê
+  w 640x400 albo 640x480, jak wybrano.
+- Zapis zrobiony klawiszem F10 w trakcie ruchu jednostki wczytuje siê z
+  jednostk± stoj±c± tam, gdzie by³a.
+- Obraz bitwy jest dok³adny pod kursorem 2x2 czo³gu i za ¿o³nierzem, który
+  w³a¶nie skoñczy³ marsz.
+
+0.100 (2.11.2026)
+- MakeMusic (ikona w szufladzie AmiXcom) robi muzykê z PC z Twoich plików
+  X-COM: ok. pó³ minuty na 68060 100 MHz (muzyka AdLib ok. 15 minut), okno
+  pokazuje postêp. Gra startuje bez robienia muzyki; bez muzyki ekran
+  wczytywania pisze "NO MUSIC YET". Na PC to samo robi
+  tools/music/make_music.py ze ¼róde³. Terror from the Deep: Tool Type
+  GAME=TFTD (jeszcze niesprawdzone z plikami TFTD).
+- Instalacja krok po kroku: Install_pl.txt, Install_en.txt, Install_de.txt.
+- Przewijanie mapy bitwy koñczy siê p³ynnie; plansza "Hidden Movement"
+  zostaje na ekranie bez ponownego rysowania, dziêki czemu tury obcych
+  i cywilów s± krótkie.
+- Ka¿de nowe okno (np. "Abort Mission") pojawia siê od razu w ca³o¶ci.
+
+0.86 (24.10.2026) - pierwsze wydanie tej wersji
+- Bitwy natywnie w 640x400 i 640x480 (pozycje Warp w Options -> Video);
+  obraz bitwy jest w pamiêci karty graficznej, a przewija go blitter karty.
+- Intro UFO gra z oryginalnym d¼wiêkiem w trakcie wczytywania gry; Esc
+  albo klikniêcie pokazuje obraz tytu³owy z "LOADING nn %".
+- Muzyka i efekty d¼wiêkowe z amigowego wydania UFO, obok tych z PC.
+- Okno postêpu zapisu/odczytu; raport b³êdu F10; zrzut ekranu Help.
+- Options -> Amiga tak¿e po polsku; Show FPS (domy¶lnie wy³±czone).
+- Bez paska tytu³u; ekran prze³±cza siê na Workbench z prawego górnego rogu.
+- Program uruchomiony z ikony nie otwiera okna konsoli.
+- Kod dostrojony do 68040/68060; w³asny przydzia³ pamiêci.
+
+AmiXcom to port OpenXcom (GPL-3.0) autorstwa Grzegorza Koryckiego (angree),
+https://github.com/angree/AmiXcom - to wydanie jest forkiem, zrobionym
+z Claude Code.

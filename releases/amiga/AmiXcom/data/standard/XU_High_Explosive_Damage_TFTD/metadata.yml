@@ -1,0 +1,13 @@
+#
+# metadata.yaml for XcomUtil High Explosive Damage
+
+name: "XcomUtil: High Explosive Damage"
+version: 1.0
+description: "Increases the Magna Pack Explosive damage to 200, letting it pierce USO walls."
+author: the OpenXcom team
+
+master: xcom2
+
+# AMIGA-PORT: the directory was renamed to fit a 30-character
+# filesystem; this keeps the id the engine and options.cfg use.
+id: XcomUtil_High_Explosive_Damage_TFTD

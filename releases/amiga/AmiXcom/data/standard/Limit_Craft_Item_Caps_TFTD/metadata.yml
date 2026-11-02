@@ -1,0 +1,13 @@
+#
+# metadata.yaml for Limit Craft Item Capacities
+
+name: "Limit Craft Item Capacities"
+version: 1.0
+description: "Limits the number of items you can take on a craft to 80."
+author: the OpenXcom team
+
+master: xcom2
+
+# AMIGA-PORT: the directory was renamed to fit a 30-character
+# filesystem; this keeps the id the engine and options.cfg use.
+id: Limit_Craft_Item_Capacities_TFTD

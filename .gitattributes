@@ -2,3 +2,4 @@
 *.hdf binary
 *.tar.gz binary
 *.png binary
+releases/amiga/** -text

@@ -36,7 +36,7 @@ WYMAGANIA
 - Karta graficzna RTG z 8-bitowym trybem ekranu (Picasso96 / CyberGraphX).
 - UFO wymaga 68040/68060 z FPU; UFO-noFPU działa na 68020/68030, LC060.
 - Dużo Fast RAM: 64 MB lub więcej.
-- Dysk: ~43 MB po rozpakowaniu (archiwum 17 MB), ~40 MB na dane gry, ~35 MB na muzykę z PC
+- Dysk: ~43 MB po rozpakowaniu (archiwum 16 MB), ~40 MB na dane gry, ~35 MB na muzykę z PC
   (robi ją raz MakeMusic, Install_pl.txt, krok 3).
 
 INSTALACJA

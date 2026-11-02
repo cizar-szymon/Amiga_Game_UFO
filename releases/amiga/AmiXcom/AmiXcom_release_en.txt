@@ -1,0 +1,128 @@
+AmiXcom 0.106 beta - OpenXcom (UFO: Enemy Unknown / X-COM) for the Amiga with a Warp card
+=============================================================================
+
+Release 0.106, 2.11.2026. "0" means beta; official releases will be 1.xx.
+The number is shown in the main menu ("Version RTG 0.106") and by the Shell
+command "Version UFO".
+
+REPORTING A BUG
+---------------
+Press F10 in the game where the problem is on screen. It writes
+user/xcom1/bugNNN.png (the screen), bugNNN.txt (what the game was doing) and
+bugNNN.sav (the saved game). Send those three files together with
+sdlmini.log, user/openxcom.log and the version number. Help takes a plain
+screenshot.
+
+WHAT IS IN THE ARCHIVE
+----------------------
+UFO            the game for 68040/68060 WITH an FPU (the one to use on a Warp)
+UFO-noFPU      the same game without FPU code: 68020/68030, LC060/EC060
+MakeMusic      makes the game's music from your X-COM files (Install_en.txt, step 3)
+Install_en.txt installation step by step (also _pl, _de)
+data/          OpenXcom's own data, translations, music instruments
+data/UFO/      empty - your X-COM game data goes here (see below)
+data/TFTD/     empty - Terror from the Deep data, optional
+data/UFO_AMIGA empty - files of the Amiga release of UFO, optional
+
+No X-COM game data is included: you need your own copy of the PC game
+(GOG and Steam copies work).
+
+REQUIREMENTS
+------------
+- Made for the Amiga 500 / 1200 / 3000 / 4000 with a Warp card (Warp 560,
+  1240, 1260, 1260 Extreme, 4070); tested on an A1200 with a Warp 1260
+  Extreme and an A4000 with a Warp 4070 (68060, AmigaOS 3.2). The Warp's fast
+  graphics card gives the speeds below; other 68040/68060 Amigas with an RTG
+  card run the game, slower.
+- RTG graphics card with an 8-bit screen mode (Picasso96 / CyberGraphX).
+- UFO needs a 68040/68060 with FPU; UFO-noFPU runs on a 68020/68030, LC060.
+- Lots of Fast RAM: 64 MB or more.
+- Disk: ~43 MB unpacked (16 MB archive), ~40 MB for the game data, ~35 MB for the
+  PC music (made once by MakeMusic, Install_en.txt, step 3).
+
+INSTALLING
+----------
+1. Unpack the archive anywhere, e.g. in a Shell
+   UnZip AmiXcom-0.106.zip -d Work:Games  ->  Work:Games/AmiXcom/
+2. Copy from your PC game the folders
+     GEODATA GEOGRAPH MAPS ROUTES SOUND TERRAIN UFOGRAPH UNITS
+   into data/UFO/. Add UFOINTRO too for the intro.
+3. Optional - the Amiga UFO's own music and sound effects: copy from your
+   Amiga UFO disks into data/UFO_AMIGA/ the files
+     Defend.mus EnBase.mus Geo.mus Inter.mus Lose.mus Mars.mus NewMars.mus
+     Story.mus Win.mus UFO.bank   and the folders TacticalFX GeoScapeFX
+   Then pick MUSIC = Amiga and SOUND EFFECTS = Amiga in Options -> Amiga.
+4. Double-click UFO (or UFO-noFPU). The icon gives the game its 1 MB stack;
+   from a Shell: Stack 1000000, then UFO.
+   MakeMusic makes the PC music once (Install_en.txt, step 3); the game
+   itself does not convert it.
+
+KEYS
+----
+F10            bug report (see above)
+Help           screenshot
+Esc / mouse    skips the intro
+Top right 2x2 pixels of the screen: click to flip to the Workbench.
+
+OPTIONS -> AMIGA
+----------------
+Map reveal, Split movement calculation, Music (Off / Amiga / PC game),
+Music source (Samples / AdLib), Sound effects (PC game / Amiga), Language
+from Workbench, Show FPS. On top: the Warp card, its firmware and CPU clock
+(from SYS:C/WarpTool, if present).
+Options -> Video: "WARP RTG 320x200 / 640x400" and "... / 640x480": the
+Geoscape on a 320x200 screen, battles native at 640x400 or 640x480.
+
+SPEED (Warp 1260, 68060 at 100 MHz)
+-----------------------------------
+- Battles at 640x400 / 640x480: about 50 fps standing, 33-37 fps
+  scrolling, 28 fps while soldiers walk; a large unit (sectopod, reaper,
+  cyberdisc, the X-COM tanks) thinks for about 2 s at most in an alien turn.
+- Geoscape: about 49 fps while time runs; a quiet 1 DAY step 0.3 s.
+- Saving: 0.14 s on the Geoscape, under half a second in a battle; loading
+  a save about 6 s; from the icon to the menu about 30 s.
+
+RELEASE HISTORY
+---------------
+0.106 (2.11.2026)
+- The release is a ZIP archive (UnZip on the Amiga) and lives in the
+  repository, releases/amiga; the texts have icons that open in MultiView.
+- The save list shows the date and time of every save, from the Amiga's
+  clock.
+- The game loads on a 320x200 screen (the Geoscape's size) whatever screen
+  the last game ended on; battles open at 640x400 or 640x480 as chosen.
+- A save made with F10 while a unit is moving loads with the unit standing
+  where it was.
+- The battle picture stays exact under a tank's 2x2 cursor and behind a
+  soldier who has just walked.
+
+0.100 (2.11.2026)
+- MakeMusic (its icon in the AmiXcom drawer) makes the PC music from your
+  X-COM files: about half a minute on a 68060 at 100 MHz (the AdLib music
+  about 15 minutes), with a progress window. The game starts without
+  making music; without music the loading screen says "NO MUSIC YET". On a
+  PC the same is done by tools/music/make_music.py of the sources. Terror
+  from the Deep: Tool Type GAME=TFTD (not yet tried with the TFTD files).
+- Installation step by step: Install_en.txt, Install_pl.txt, Install_de.txt.
+- Scrolling the battle map stops smoothly; the "Hidden Movement" screen
+  stays on the screen without being redrawn, which keeps alien and
+  civilian turns short.
+- Every new window (e.g. "Abort Mission") appears whole at once.
+
+0.86 (24.10.2026) - the first release of this fork
+- Native battles at 640x400 and 640x480 (Warp entries in Options -> Video);
+  the battle picture lives in the graphics card's memory and the card's
+  blitter scrolls it.
+- The UFO intro plays, with its original sound, while the game loads; Esc
+  or a click shows the title picture with "LOADING nn %".
+- Music and sound effects from the Amiga release of UFO, next to the PC
+  ones.
+- Load/save progress box; F10 bug report; Help screenshot.
+- Options -> Amiga in Polish too; Show FPS (off by default).
+- No title bar; the screen flips to the Workbench from its top right corner.
+- A program started from its icon opens no console window.
+- Code tuned for the 68040/68060; its own memory allocator.
+
+AmiXcom is a port of OpenXcom (GPL-3.0) by Grzegorz Korycki (angree),
+https://github.com/angree/AmiXcom - this release is a fork, made with
+Claude Code.

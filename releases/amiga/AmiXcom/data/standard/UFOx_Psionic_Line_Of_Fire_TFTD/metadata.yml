@@ -1,0 +1,13 @@
+#
+# metadata.yaml for UFOextender Psionic Line Of Fire
+
+name: "UFOextender: Psionic Line Of Fire"
+version: 1.0
+description: "Psionic weapons (both X-COM and aliens) can only be used with direct line-of-sight to the target."
+author: the OpenXcom team
+
+master: xcom2
+
+# AMIGA-PORT: the directory was renamed to fit a 30-character
+# filesystem; this keeps the id the engine and options.cfg use.
+id: UFOextender_Psionic_Line_Of_Fire_TFTD

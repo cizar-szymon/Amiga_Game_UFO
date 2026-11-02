@@ -1,0 +1,6 @@
+OpenXcom translations, pulled from Transifex by OpenXcom's own
+workflow (.github/workflows/tx.yml) and published as the
+tx-translations artifact of OpenXcom/OpenXcom.
+
+Same project, same licence as OpenXcom itself: GPL-3.0.
+Refresh with build/fetch_translations.py.

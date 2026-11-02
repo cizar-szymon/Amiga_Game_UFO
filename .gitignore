@@ -21,3 +21,13 @@ native/amiga_buildid.h
 # the PC build of MakeMusic (tools/music/make_music.py)
 tools/music/.build/
 tools/music/__pycache__/
+
+# the public release tree (releases/amiga, see docs/dev/PUBLISHING.md):
+# OpenXcom's own data is in it; X-COM data never - only the README files
+!/releases/amiga/AmiXcom/data/
+/releases/amiga/AmiXcom/data/UFO/*
+!/releases/amiga/AmiXcom/data/UFO/README.txt
+/releases/amiga/AmiXcom/data/TFTD/*
+!/releases/amiga/AmiXcom/data/TFTD/README.txt
+/releases/amiga/AmiXcom/data/UFO_AMIGA/*
+!/releases/amiga/AmiXcom/data/UFO_AMIGA/README.txt

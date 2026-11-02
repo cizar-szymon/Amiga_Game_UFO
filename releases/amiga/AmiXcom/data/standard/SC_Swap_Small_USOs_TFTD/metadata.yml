@@ -1,0 +1,13 @@
+#
+# metadata.yaml for Swap Small USOs
+
+name: "StrategyCore Swap Small USOs"
+version: 1.0
+description: "Swaps the maps and interception images for the two small USOs to better suit what they represent."
+author: Zombie
+
+master: xcom2
+
+# AMIGA-PORT: the directory was renamed to fit a 30-character
+# filesystem; this keeps the id the engine and options.cfg use.
+id: StrategyCore_Swap_Small_USOs_TFTD
