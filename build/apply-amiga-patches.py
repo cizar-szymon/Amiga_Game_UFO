@@ -13252,6 +13252,332 @@ def main():
         "#endif\n",
         "full frame after a state opens")))
 
+    # 6anh. amigaMapVerify 2 writes both pictures of the first six mismatches
+    #       (the cached one and the full compose) to RAM:mvNN.bin, so a
+    #       mismatch can be looked at instead of guessed from its bounding box
+    #       (tools/mvdump.py). Night test 2026-11-02: two kinds left, at the
+    #       2x2 cursor of a selected tank and a narrow strip in phases 1-4.
+    results.append(("Map.cpp (verify dump)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\t\tSDLmini_Log(b_);\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "\t\telse if ((nChk_ % 200) == 0)\n"
+        ,
+        "\t\t\t\tSDLmini_Log(b_);\n"
+        "\t\t\t}\n"
+        "\t\t\t/* 6anh: amigaMapVerify 2 - both pictures of the first mismatches to\n"
+        "\t\t\t * RAM:mvNN.bin (header line, palette, cached picture, full compose)\n"
+        "\t\t\t * for tools/mvdump.py */\n"
+        "\t\t\tif (Options::amigaMapVerify >= 2 && nBad_ <= 6)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tchar fn_[40];\n"
+        "\t\t\t\tsnprintf(fn_, sizeof fn_, \"RAM:mv%02lu.bin\", nBad_);\n"
+        "\t\t\t\tFILE *f_ = fopen(fn_, \"wb\");\n"
+        "\t\t\t\tif (f_ != 0)\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tSDL_Palette *pal_ = s_->format->palette;\n"
+        "\t\t\t\t\tfprintf(f_, \"MVD1 %d %d %d %d %d %d %d %d\\n\", w_, h_, bx0_, by0_, bx1_, by1_, _animFrame & 7, _fcOwn);\n"
+        "\t\t\t\t\tfor (int c_ = 0; c_ < 256; ++c_)\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tUint8 rgb_[3] = { 0, 0, 0 };\n"
+        "\t\t\t\t\t\tif (pal_ != 0 && c_ < pal_->ncolors) { rgb_[0] = pal_->colors[c_].r; rgb_[1] = pal_->colors[c_].g; rgb_[2] = pal_->colors[c_].b; }\n"
+        "\t\t\t\t\t\tfwrite(rgb_, 1, 3, f_);\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\t\tfor (int y_ = 0; y_ < h_; ++y_) fwrite(ref_ + (size_t)y_ * s_->pitch, 1, (size_t)w_, f_);\n"
+        "\t\t\t\t\tfor (int y_ = 0; y_ < h_; ++y_) fwrite((const Uint8 *)s_->pixels + (size_t)y_ * s_->pitch, 1, (size_t)w_, f_);\n"
+        "\t\t\t\t\tfclose(f_);\n"
+        "\t\t\t\t}\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "\t\telse if ((nChk_ % 200) == 0)\n"
+        ,
+        "verify dump")))
+
+    # 6ani. amigaMapVerify 2 also traces what fills, seeds and drops the
+    #       phase pictures (full / part store, seeds, scroll, cursor, own
+    #       write-back, drops), with the cursor state and the valid mask, so
+    #       a mismatch can be followed back to the path that left it.
+    results.append(("Map.cpp (mvtrace macros)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "#include \"BattlescapeMessage.h\"\n"
+        ,
+        "#include \"BattlescapeMessage.h\"\n"
+        "/* 6ani: amigaMapVerify 2 - a trace of what fills, seeds and drops the\n"
+        " * phase pictures (the first 250 events), to tell which path left a\n"
+        " * mismatch behind */\n"
+        "static unsigned long amMvTrN_ = 0;\n"
+        "static int amMvMask_(const int *v_) { int m_ = 0; for (int i_ = 0; i_ < 8; ++i_) if (v_[i_]) m_ |= 1 << i_; return m_; }\n"
+        "#define AM_MVTRACE(fmt_, ...) do { if (Options::amigaMapVerify >= 2 && amMvTrN_ < 800) { char tb_[220]; ++amMvTrN_; snprintf(tb_, sizeof tb_, \"mvtrace: \" fmt_, __VA_ARGS__); SDLmini_Log(tb_); } } while (0)\n"
+        "#define AM_MVST_FMT \" | ph %d sel %d,%d cs %d ct %d ic %d vl %d valid %02x own %d strip %d\"\n"
+        "#define AM_MVST_ARGS (_animFrame & 7), _selectorX, _selectorY, _cursorSize, (int)_cursorType, (_save->getBattleState() && _save->getBattleState()->getMouseOverIcons()) ? 1 : 0, _camera->getViewLevel(), amMvMask_(_fcValid), _fcOwn, (int)_fcScrollStrip\n"
+        ,
+        "mvtrace macros")))
+    results.append(("Map.cpp (mvtrace mismatch)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\t\tSDLmini_Log(b_);\n"
+        "\t\t\t}\n"
+        "\t\t\t/* 6anh: amigaMapVerify 2 - both pictures of the first mismatches to\n"
+        ,
+        "\t\t\t\tSDLmini_Log(b_);\n"
+        "\t\t\t}\n"
+        "\t\t\tAM_MVTRACE(\"mismatch #%lu\" AM_MVST_FMT, nBad_, AM_MVST_ARGS);\n"
+        "\t\t\t/* 6anh: amigaMapVerify 2 - both pictures of the first mismatches to\n"
+        ,
+        "mvtrace mismatch")))
+    results.append(("Map.cpp (mvtrace store)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t_fcValid[ph_] = 1;\n"
+        ,
+        "\t\t_fcValid[ph_] = 1;\n"
+        "\t\tif (wasFull_) AM_MVTRACE(\"full store%s\" AM_MVST_FMT, \"\", AM_MVST_ARGS); else AM_MVTRACE(\"part store %d,%d-%d,%d\" AM_MVST_FMT, x0, y0, x1, y1, AM_MVST_ARGS);\n"
+        ,
+        "mvtrace store")))
+    results.append(("Map.cpp (mvtrace seed after scroll)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\tamigaSeedOtherPhases(ph_);\n"
+        "\t_fcScrollStrip = false;\n"
+        "\tif (AmigaPerfLog) SDLmini_Log(\"seed: after scroll\");\n"
+        ,
+        "\tAM_MVTRACE(\"seed after scroll%s\" AM_MVST_FMT, \"\", AM_MVST_ARGS);\n"
+        "\tamigaSeedOtherPhases(ph_);\n"
+        "\t_fcScrollStrip = false;\n"
+        "\tif (AmigaPerfLog) SDLmini_Log(\"seed: after scroll\");\n"
+        ,
+        "mvtrace seed after scroll")))
+    results.append(("Map.cpp (mvtrace own)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\tif (os_->amgen == _fcOwnGen && w_ == _fcW && h_ == _fcH && _fcValid[_fcOwn] && _fcPix[_fcOwn])\n"
+        ,
+        "\t\t\tAM_MVTRACE(\"own %d back: %s\" AM_MVST_FMT, _fcOwn, (os_->amgen == _fcOwnGen && w_ == _fcW && h_ == _fcH && _fcValid[_fcOwn] && _fcPix[_fcOwn]) ? \"copied\" : \"dropped\", AM_MVST_ARGS);\n"
+        "\t\t\tif (os_->amgen == _fcOwnGen && w_ == _fcW && h_ == _fcH && _fcValid[_fcOwn] && _fcPix[_fcOwn])\n"
+        ,
+        "mvtrace own")))
+    results.append(("Map.cpp (mvtrace sig)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\t++AmCp_whySig;\n"
+        "\t\t\tfor (int i_ = 0; i_ < 8; ++i_) { _fcValid[i_] = 0; if (_fcGrid[i_]) memset(_fcGrid[i_], 0, (size_t)_fcGridW * _fcGridH); _fcDirtyN[i_] = 0; _fcBoxN[i_] = 0; }\n"
+        ,
+        "\t\t\t++AmCp_whySig;\n"
+        "\t\t\tAM_MVTRACE(\"drop all (sig)%s\" AM_MVST_FMT, \"\", AM_MVST_ARGS);\n"
+        "\t\t\tfor (int i_ = 0; i_ < 8; ++i_) { _fcValid[i_] = 0; if (_fcGrid[i_]) memset(_fcGrid[i_], 0, (size_t)_fcGridW * _fcGridH); _fcDirtyN[i_] = 0; _fcBoxN[i_] = 0; }\n"
+        ,
+        "mvtrace sig")))
+    results.append(("Map.cpp (mvtrace scroll)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\t\t\t\t++AmCp_whyScroll;\n"
+        ,
+        "\t\t\t\t\t\t++AmCp_whyScroll;\n"
+        "\t\t\t\t\t\tAM_MVTRACE(\"scroll %d,%d\" AM_MVST_FMT, dx_, dy_, AM_MVST_ARGS);\n"
+        ,
+        "mvtrace scroll")))
+    results.append(("Map.cpp (mvtrace cursor)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\t\t++AmCp_whyCur;\n"
+        ,
+        "\t\t\t\t++AmCp_whyCur;\n"
+        "\t\t\t\tAM_MVTRACE(\"cursor from %d,%d cs %d ct %d\" AM_MVST_FMT, _fcSelX, _fcSelY, _fcCurSize, _fcCurType, AM_MVST_ARGS);\n"
+        ,
+        "mvtrace cursor")))
+    results.append(("Map.cpp (mvtrace miss)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\t++AmCp_whyMiss;\n"
+        ,
+        "\t\t\t++AmCp_whyMiss;\n"
+        "\t\t\tAM_MVTRACE(\"miss%s\" AM_MVST_FMT, \"\", AM_MVST_ARGS);\n"
+        ,
+        "mvtrace miss")))
+    results.append(("Map.cpp (mvtrace hidden)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\tif (_fcOwn >= 0) { _fcValid[_fcOwn] = 0; _fcOwn = -1; }   /* ...unless only the surface held it */\n"
+        ,
+        "\t\tif (!_fcMsgUp) AM_MVTRACE(\"hidden-movement screen%s\" AM_MVST_FMT, \"\", AM_MVST_ARGS);\n"
+        "\t\tif (_fcOwn >= 0) { _fcValid[_fcOwn] = 0; _fcOwn = -1; }   /* ...unless only the surface held it */\n"
+        ,
+        "mvtrace hidden")))
+
+    results.append(("Map.cpp (mvtrace grow)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "void Map::amigaGrowBox(int ph, int x0, int y0, int x1, int y1)\n"
+        "{\n"
+        "\tif (x1 <= x0 || y1 <= y0) return;\n"
+        ,
+        "void Map::amigaGrowBox(int ph, int x0, int y0, int x1, int y1)\n"
+        "{\n"
+        "\tif (x1 <= x0 || y1 <= y0) return;\n"
+        "\tif (ph == 0) AM_MVTRACE(\"grow0 %d,%d-%d,%d n %d\", x0, y0, x1, y1, _fcBoxN[0]);\n"
+        ,
+        "mvtrace grow")))
+    results.append(("Map.cpp (mvtrace repair)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\tint nb_ = _fcBoxN[ph_];\n"
+        ,
+        "\t\t\tint nb_ = _fcBoxN[ph_];\n"
+        "\t\t\tfor (int b_ = 0; b_ < nb_; ++b_) AM_MVTRACE(\"repair ph %d box %d: %d,%d-%d,%d\", ph_, b_, _fcBx0[ph_][b_], _fcBy0[ph_][b_], _fcBx1[ph_][b_], _fcBy1[ph_][b_]);\n"
+        ,
+        "mvtrace repair")))
+
+    results.append(("Map.cpp (mvtrace curdraw)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\t\t\t// Draw cursor front\n"
+        "\t\t\t\t\tif (_cursorType != CT_NONE && _selectorX > itX - _cursorSize && _selectorY > itY - _cursorSize && _selectorX < itX+1 && _selectorY < itY+1 && !_save->getBattleState()->getMouseOverIcons())\n"
+        "\t\t\t\t\t{\n"
+        ,
+        "\t\t\t\t\t// Draw cursor front\n"
+        "\t\t\t\t\tif (_cursorType != CT_NONE && _selectorX > itX - _cursorSize && _selectorY > itY - _cursorSize && _selectorX < itX+1 && _selectorY < itY+1 && !_save->getBattleState()->getMouseOverIcons())\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t{ static int amCdN_ = 0; if (Options::amigaMapVerify >= 2 && amCdN_ < 60 && _cursorSize > 1) { char cb_[160]; ++amCdN_; snprintf(cb_, sizeof cb_, \"mvtrace: curdraw %d,%d,%d at %d,%d vl %d sel %d,%d clip %d,%d-%d,%d\", itX, itY, itZ, screenPosition.x, screenPosition.y, _camera->getViewLevel(), _selectorX, _selectorY, AmigaClipX0, AmigaClipY0, AmigaClipX1, AmigaClipY1); SDLmini_Log(cb_); } }\n"
+        ,
+        "mvtrace curdraw")))
+
+    results.append(("Map.cpp (mvtrace unit)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\t\t++AmCp_whyUnits;\n"
+        ,
+        "\t\t\t\t++AmCp_whyUnits;\n"
+        "\t\t\t\t{ static int amMvWalk_ = 0; const int wk_ = (bu_->getFaction() == FACTION_PLAYER && bu_->getStatus() == STATUS_WALKING) ? 1 : 0; if (wk_ && !amMvWalk_) amMvTrN_ = 0; amMvWalk_ = wk_; }\n"
+        "\t\t\t\tAM_MVTRACE(\"unit %d at %d,%d,%d st %d (was %d,%d,%d st %d) lp %d\" AM_MVST_FMT, (int)i_, bu_->getPosition().x, bu_->getPosition().y, bu_->getPosition().z, st_, _fcUnitPos[i_].x, _fcUnitPos[i_].y, _fcUnitPos[i_].z, _fcUnitState[i_], (int)amLightProp_, AM_MVST_ARGS);\n"
+        ,
+        "mvtrace unit")))
+    results.append(("Map.cpp (mvtrace lightprop)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\t\t\tamLightProp_ = true;\n"
+        ,
+        "\t\t\t\t\tamLightProp_ = true;\n"
+        "\t\t\t\t\tAM_MVTRACE(\"light change %d tiles\" AM_MVST_FMT, AmigaTileChgN, AM_MVST_ARGS);\n"
+        ,
+        "mvtrace lightprop")))
+    results.append(("Map.cpp (mvtrace deps)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\tif (amLightProp_) amigaMarkPhaseDeps(ph_);   /* the copies carry this phase's arrow, cursor, fire */\n"
+        ,
+        "\t\t\tif (amLightProp_) AM_MVTRACE(\"propagated ph %d to valid phases, deps marked%s\", ph_, \"\");\n"
+        "\t\t\tif (amLightProp_) amigaMarkPhaseDeps(ph_);   /* the copies carry this phase's arrow, cursor, fire */\n"
+        ,
+        "mvtrace deps")))
+
+    # 6ank. The 2x2 cursor of a tank (and of any big unit) is drawn on the
+    #       tiles selX..selX+size-1, selY..selY+size-1 (drawTerrain: selX >
+    #       itX - size && selX < itX + 1). The map cache took them as
+    #       selX-size+1..selX: the cursor box and the tiles it marked were one
+    #       tile north-west of the cursor, so moving it repaired only part of
+    #       it and the rest stayed in the cached phases (amigaMapVerify night
+    #       test 2026-11-02, every battle with a tank: the blue 2x2 cursor
+    #       half drawn in phase 0; the other phases hid it by luck, their box
+    #       merged with a bigger one).
+    _p6k = os.path.join(src, "Battlescape", "Map.cpp")
+    _t6k = open(_p6k, encoding="utf-8", errors="surrogateescape").read()
+    if "6ank" not in _t6k:
+        _r6k = [
+            ("/* tight cursor rect: the cursor is drawn on tiles (selX-size+1..selX,\n"
+             " * selY-size+1..selY)",
+             "/* tight cursor rect: the cursor is drawn on tiles (selX..selX+size-1,\n"
+             " * selY..selY+size-1; 6ank)", 1),
+            ("Position(selX - dx_, selY - dy_, z_)", "Position(selX + dx_, selY + dy_, z_)", 1),
+            ("amigaMarkTileNoBox(i_, _selectorX - a_, _selectorY - b_)", "amigaMarkTileNoBox(i_, _selectorX + a_, _selectorY + b_)", 1),
+            ("amigaMarkTileNoBox(ph2_, _fcSelX - a_, _fcSelY - b_)", "amigaMarkTileNoBox(ph2_, _fcSelX + a_, _fcSelY + b_)", 1),
+            ("amigaMarkTileNoBox(ph2_, _selectorX - a_, _selectorY - b_)", "amigaMarkTileNoBox(ph2_, _selectorX + a_, _selectorY + b_)", 1),
+            ("if (top_ < vl_ && ((x == _selectorX && y == _selectorY) || AmigaDirtyFullColumn)) top_ = vl_;",
+             "if (top_ < vl_ && ((x >= _selectorX && y >= _selectorY && x < _selectorX + (_cursorSize > 0 ? _cursorSize : 1) && y < _selectorY + (_cursorSize > 0 ? _cursorSize : 1)) || AmigaDirtyFullColumn)) top_ = vl_;", 1),
+        ]
+        for _o, _n, _c in _r6k:
+            if _t6k.count(_o) != _c:
+                raise SystemExit("PATCH FAILED (6ank cursor tiles): %d x %r" % (_t6k.count(_o), _o))
+            _t6k = _t6k.replace(_o, _n)
+        open(_p6k, "w", encoding="utf-8", errors="surrogateescape").write(_t6k)
+        results.append(("Map.cpp (2x2 cursor tiles)", "applied"))
+    else:
+        results.append(("Map.cpp (2x2 cursor tiles)", "already"))
+
+    # 6anl. A walking unit's position flips to the destination tile halfway
+    #       through the step, but its sprite is drawn shifted back toward the
+    #       tile it came from until the step ends. From the flip on the unit
+    #       producer marked only the destination (old and new position were
+    #       both it), so the last frames of the step were repaired in a box
+    #       that missed the part of the sprite over the tile behind - each
+    #       of those phases kept a strip of the soldier after he stopped
+    #       (night test 2026-11-02, battles without tanks: 7-13 px wide, 4
+    #       phases, a soldier on the upper floor). Mark the last position too.
+    results.append(("Map.cpp (walk from tile)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\t\tfor (int a_ = 0; a_ < sz_; ++a_) for (int b_ = 0; b_ < sz_; ++b_) { amigaDirtyTile(_fcUnitPos[i_].x + a_, _fcUnitPos[i_].y + b_); amigaDirtyTile(bu_->getPosition().x + a_, bu_->getPosition().y + b_); }\n"
+        ,
+        "\t\t\t\tfor (int a_ = 0; a_ < sz_; ++a_) for (int b_ = 0; b_ < sz_; ++b_) { amigaDirtyTile(_fcUnitPos[i_].x + a_, _fcUnitPos[i_].y + b_); amigaDirtyTile(bu_->getPosition().x + a_, bu_->getPosition().y + b_); }\n"
+        "\t\t\t\t{   /* 6anl: the tile it walks from - drawn toward it until the walk ends */\n"
+        "\t\t\t\t\tconst Position lp_ = bu_->getLastPosition();\n"
+        "\t\t\t\t\tif (lp_ != bu_->getPosition() && lp_ != _fcUnitPos[i_])\n"
+        "\t\t\t\t\t\tfor (int a_ = 0; a_ < sz_; ++a_) for (int b_ = 0; b_ < sz_; ++b_) amigaDirtyTile(lp_.x + a_, lp_.y + b_);\n"
+        "\t\t\t\t}\n"
+        ,
+        "walk from tile")))
+
+    # 6anj. The cursor is not drawn while the mouse is over the icons
+    #       (drawTerrain asks BattlescapeState::getMouseOverIcons), and the map
+    #       cache did not know: moving onto the icons left the cursor in the
+    #       cached phases, moving off left it missing. Now a change of that
+    #       flag repaints the cursor like a move does. amigaCurIcons 0 = old.
+    results.append(("Options.inc.h (cursor icons decl)", edit(
+        os.path.join(src, "Engine", "Options.inc.h"),
+        "OPT int amigaHiddenSkip; /* 1 = the hidden-movement screen is not redrawn while it stays up (6anb) */\n"
+        ,
+        "OPT int amigaHiddenSkip; /* 1 = the hidden-movement screen is not redrawn while it stays up (6anb) */\n"
+        "OPT int amigaCurIcons; /* 1 = the map cache sees the cursor hidden over the icons (6anj) */\n"
+        ,
+        "cursor icons decl")))
+    results.append(("Options.cpp (cursor icons info)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t_info.push_back(OptionInfo(\"amigaHiddenSkip\", &amigaHiddenSkip, 1)); /* 6anb */\n"
+        ,
+        "\t_info.push_back(OptionInfo(\"amigaHiddenSkip\", &amigaHiddenSkip, 1)); /* 6anb */\n"
+        "\t_info.push_back(OptionInfo(\"amigaCurIcons\", &amigaCurIcons, 1)); /* 6anj */\n"
+        ,
+        "cursor icons info")))
+    results.append(("Map.cpp (cursor icons state)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "void Map::amigaVerifyFrame()\n"
+        "{\n"
+        ,
+        "/* 6anj: drawTerrain draws no cursor while the mouse is over the icons;\n"
+        " * the cache saw only the cursor position, type and size */\n"
+        "static int amFcIcons_ = 0;\n"
+        "void Map::amigaVerifyFrame()\n"
+        "{\n"
+        ,
+        "cursor icons state")))
+    results.append(("Map.cpp (cursor icons sig reset)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\t_fcCurType = (int)_cursorType; _fcCurSize = _cursorSize;\n"
+        "\t\t\t_fcProjOn = (_projectile != 0);\n"
+        ,
+        "\t\t\t_fcCurType = (int)_cursorType; _fcCurSize = _cursorSize;\n"
+        "\t\t\tamFcIcons_ = (_save->getBattleState() && _save->getBattleState()->getMouseOverIcons()) ? 1 : 0;\n"
+        "\t\t\t_fcProjOn = (_projectile != 0);\n"
+        ,
+        "cursor icons sig reset")))
+    results.append(("Map.cpp (cursor icons producer)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\tif (_selectorX != _fcSelX || _selectorY != _fcSelY\n"
+        "\t\t\t\t|| (int)_cursorType != _fcCurType || _cursorSize != _fcCurSize)\n"
+        ,
+        "\t\t\tconst int amIcons_ = (_save->getBattleState() && _save->getBattleState()->getMouseOverIcons()) ? 1 : 0;\n"
+        "\t\t\tif (_selectorX != _fcSelX || _selectorY != _fcSelY\n"
+        "\t\t\t\t|| (int)_cursorType != _fcCurType || _cursorSize != _fcCurSize\n"
+        "\t\t\t\t|| (Options::amigaCurIcons && amIcons_ != amFcIcons_))\n"
+        ,
+        "cursor icons producer")))
+    results.append(("Map.cpp (cursor icons remember)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\t\t_fcCurType = (int)_cursorType; _fcCurSize = _cursorSize;\n"
+        "\t\t\t}\n"
+        "\t\t\tif (_projectile)\n"
+        ,
+        "\t\t\t\t_fcCurType = (int)_cursorType; _fcCurSize = _cursorSize;\n"
+        "\t\t\t\tamFcIcons_ = amIcons_;\n"
+        "\t\t\t}\n"
+        "\t\t\tif (_projectile)\n"
+        ,
+        "cursor icons remember")))
+
     for root, _dirs, files in os.walk(src):
         for fn in files:
             if not fn.endswith((".cpp", ".h")):
