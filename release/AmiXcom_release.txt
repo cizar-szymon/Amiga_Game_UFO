@@ -1,8 +1,8 @@
-AmiXcom 0.100 beta - OpenXcom (UFO: Enemy Unknown / X-COM) na Amigę z kartą Warp
+AmiXcom 0.106 beta - OpenXcom (UFO: Enemy Unknown / X-COM) na Amigę z kartą Warp
 ============================================================================
 
-Wydanie 0.100, 2.11.2026. "0" oznacza wersję beta; wydania oficjalne będą
-miały numer 1.xx. Numer widać w menu głównym ("Version RTG 0.100") i po
+Wydanie 0.106, 2.11.2026. "0" oznacza wersję beta; wydania oficjalne będą
+miały numer 1.xx. Numer widać w menu głównym ("Version RTG 0.106") i po
 poleceniu Shella "Version UFO".
 
 ZGŁASZANIE BŁĘDÓW
@@ -41,7 +41,8 @@ WYMAGANIA
 
 INSTALACJA
 ----------
-1. Rozpakuj archiwum w dowolnym miejscu, np. Work:  ->  Work:AmiXcom/
+1. Rozpakuj archiwum w dowolnym miejscu, np. w Shellu
+   UnZip AmiXcom-0.106.zip -d Work:Games  ->  Work:Games/AmiXcom/
 2. Skopiuj z gry na PC katalogi
      GEODATA GEOGRAPH MAPS ROUTES SOUND TERRAIN UFOGRAPH UNITS
    do data/UFO/. Dla intro dołóż też UFOINTRO.
@@ -82,6 +83,18 @@ SZYBKOŚĆ (Warp 1260, 68060 100 MHz)
 
 HISTORIA WYDAŃ
 --------------
+0.106 (2.11.2026)
+- Wydanie to archiwum ZIP (UnZip na Amidze) w repozytorium, katalog
+  releases/amiga; opisy mają ikony otwierające je w MultiView.
+- Lista zapisów pokazuje datę i godzinę każdego zapisu, z zegara Amigi.
+- Gra wczytuje się na ekranie 320x200 (rozmiar Geoscape) niezależnie od
+  tego, na jakim ekranie skończyła się poprzednia gra; bitwy otwierają się
+  w 640x400 albo 640x480, jak wybrano.
+- Zapis zrobiony klawiszem F10 w trakcie ruchu jednostki wczytuje się z
+  jednostką stojącą tam, gdzie była.
+- Obraz bitwy jest dokładny pod kursorem 2x2 czołgu i za żołnierzem, który
+  właśnie skończył marsz.
+
 0.100 (2.11.2026)
 - MakeMusic (ikona w szufladzie AmiXcom) robi muzykę z PC z Twoich plików
   X-COM: ok. pół minuty na 68060 100 MHz (muzyka AdLib ok. 15 minut), okno

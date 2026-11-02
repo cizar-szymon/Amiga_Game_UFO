@@ -25,11 +25,13 @@ reach the same speed.
 
 ## Play it
 
-The release archive is on the [releases page](https://github.com/cizar-szymon/Amiga_Game_UFO/releases):
-`AmiXcom-<version>.lha`. Unpack it (e.g. into `Work:Games/`), follow `Install_en.txt`
-(Polish: `Install_pl.txt`, German: `Install_de.txt`) and double-click **UFO**. The release
-history and the full player's description are in `AmiXcom_release_en.txt` (Polish:
-`AmiXcom_release.txt`).
+The ready-to-unpack release is in [`releases/amiga`](releases/amiga):
+`AmiXcom-<version>.zip` (also unpacked next to it; on the Amiga:
+`UnZip AmiXcom-<version>.zip -d Work:Games`). Follow `Install_en.txt` (Polish:
+`Install_pl.txt`, German: `Install_de.txt`) and double-click **UFO**. The full player's
+description and the release history are in
+[`AmiXcom_release_en.txt`](releases/amiga/AmiXcom/AmiXcom_release_en.txt) (Polish:
+[`AmiXcom_release.txt`](releases/amiga/AmiXcom/AmiXcom_release.txt)).
 
 **Requirements:** an Amiga with a Warp card (68040 or 68060; other 68040/68060 cards with RTG
 work, slower), an RTG card with an 8-bit screen mode of 640x480 (Picasso96 / CyberGraphX),
@@ -72,6 +74,8 @@ layer).
   redistributable, not included)
 - `build/gen_music_bank.py` - the instrument bank `data/common/music.bnk` (from the FluidR3
   soundfont); `tools/music/` - MakeMusic and `make_music.py`
+- the release: `releases/amiga` is made by the workspace's `make_release.py` (the tree, the
+  icons and `tools/make_zip.py`, which keeps the programs' Amiga E bit)
 - `winuae/` - WinUAE configs and the test harness
 
 How it was done, the decisions and the measurements: [`docs/dev/`](docs/dev) (`PROGRESS.md`,

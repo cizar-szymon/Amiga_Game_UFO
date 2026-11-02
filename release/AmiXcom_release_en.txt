@@ -1,8 +1,8 @@
-AmiXcom 0.100 beta - OpenXcom (UFO: Enemy Unknown / X-COM) for the Amiga with a Warp card
+AmiXcom 0.106 beta - OpenXcom (UFO: Enemy Unknown / X-COM) for the Amiga with a Warp card
 =============================================================================
 
-Release 0.100, 2.11.2026. "0" means beta; official releases will be 1.xx.
-The number is shown in the main menu ("Version RTG 0.100") and by the Shell
+Release 0.106, 2.11.2026. "0" means beta; official releases will be 1.xx.
+The number is shown in the main menu ("Version RTG 0.106") and by the Shell
 command "Version UFO".
 
 REPORTING A BUG
@@ -42,7 +42,8 @@ REQUIREMENTS
 
 INSTALLING
 ----------
-1. Unpack the archive anywhere, e.g. Work:  ->  Work:AmiXcom/
+1. Unpack the archive anywhere, e.g. in a Shell
+   UnZip AmiXcom-0.106.zip -d Work:Games  ->  Work:Games/AmiXcom/
 2. Copy from your PC game the folders
      GEODATA GEOGRAPH MAPS ROUTES SOUND TERRAIN UFOGRAPH UNITS
    into data/UFO/. Add UFOINTRO too for the intro.
@@ -83,6 +84,18 @@ SPEED (Warp 1260, 68060 at 100 MHz)
 
 RELEASE HISTORY
 ---------------
+0.106 (2.11.2026)
+- The release is a ZIP archive (UnZip on the Amiga) and lives in the
+  repository, releases/amiga; the texts have icons that open in MultiView.
+- The save list shows the date and time of every save, from the Amiga's
+  clock.
+- The game loads on a 320x200 screen (the Geoscape's size) whatever screen
+  the last game ended on; battles open at 640x400 or 640x480 as chosen.
+- A save made with F10 while a unit is moving loads with the unit standing
+  where it was.
+- The battle picture stays exact under a tank's 2x2 cursor and behind a
+  soldier who has just walked.
+
 0.100 (2.11.2026)
 - MakeMusic (its icon in the AmiXcom drawer) makes the PC music from your
   X-COM files: about half a minute on a 68060 at 100 MHz (the AdLib music

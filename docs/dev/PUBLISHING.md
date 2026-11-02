@@ -11,22 +11,34 @@ as a pull request unless the owner asks for it.
 | `github.com/angree/AmiXcom` (remote `upstream`) | the port's author's repository | pull requests, **one problem per PR** (cause, fix, measurements, how it was verified), from `fix/...` or `feat/...` branches; AGA and AGA-FPU must still build |
 | `github.com/cizar-szymon/Amiga_Game_UFO` (remote `github`) | this RTG fork: sources and release archives | branches as they are worked on; `main` carries the released state |
 
-## Public: the repository and the release archive
+## Public: the repository and the release (after OpenDUNE, from 0.106)
 
 - Sources: `upstream/openxcom-00fbacde.tar.gz` (pristine OpenXcom), the patch
   script `build/apply-amiga-patches.py`, `native/`, `tools/` (with
   `tools/music/`: MakeMusic and `make_music.py`), `release/` (the texts).
-- The release archive `AmiXcom-<version>.lha` (the workspace's
-  `tools/make_release.py`): `UFO` (FPU), `UFO-noFPU`, `MakeMusic` and their
-  icons, `data/common` (with `music.bnk`, `earthfix.dat` and the FluidR3
-  licence - all three MUST ship), `data/standard`, the install texts
-  (`Install_en.txt`, `Install_pl.txt`, `Install_de.txt`), the release notes,
-  the empty `data/UFO`, `data/TFTD`, `data/UFO_AMIGA` and `user/music` with
-  their README files.
+- **The release lives in the repository**: `releases/amiga/AmiXcom/` (unpacked,
+  in git), `releases/amiga/AmiXcom.info` (a plain drawer icon) and
+  `releases/amiga/AmiXcom-<version>.zip` - only the current release's ZIP; the
+  older ones are removed from git (history: git and the release texts). The
+  workspace's `tools/make_release.py` makes all three and refuses a build whose
+  `$VER` is not the version given.
+- ZIP, not LHA (the owner's choice; LhA in the background in WinUAE ended with
+  error 20): `tools/make_zip.py` stores Unix permissions, programs 755, the
+  rest 644 - without them Amiga UnZip drops the E bit and the program cannot
+  be started.
+- The tree: `UFO` (FPU), `UFO-noFPU`, `MakeMusic` and their icons, `data/common`
+  (with `music.bnk`, `earthfix.dat` and the FluidR3 licence - all three MUST
+  ship), `data/standard`, the install texts (`Install_en.txt`,
+  `Install_pl.txt`, `Install_de.txt`) and the release texts with icons that
+  open MultiView, `COPYING` (GPL-3.0), the empty `data/UFO`, `data/TFTD`,
+  `data/UFO_AMIGA` and `user/music` with their README files.
 - The install texts say where the game data comes from (the player's own
   X-COM for the PC - GOG, Steam or the CD; the list of directories, no links)
   and how the music is made: MakeMusic on the Amiga, or
   `tools/music/make_music.py` on a PC.
+- Before pushing a release: the public ZIP unpacked with UnZip on a real Amiga
+  (RAM:), game data and music copied in, started from its icon, the number in
+  the menu and in `Version UFO`.
 
 ## Never public
 
@@ -38,7 +50,7 @@ as a pull request unless the owner asks for it.
   make them.
 - The Amiga UFO's own music files (`*.mus`, `UFO.bank`), the intro files.
 - CyberGraphX headers (`native/cgx-include/`), Kickstart ROMs, `boot.hdf`.
-- The private full archive `AmiXcom-<version>-full-PRIVATE.lha`
+- The private full archive `AmiXcom-<version>-full-PRIVATE.zip`
   (`make_release.py --full`: game data and converted music included) - only in
   the workspace's `releases/` (outside git), for the owner's own machines.
 
