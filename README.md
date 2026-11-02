@@ -1,195 +1,90 @@
-# AmiXcom — OpenXcom for classic Amiga (68k, AGA)
+# AmiXcom for the Amiga with a Warp card
 
-**Made with Claude Code** (Anthropic's Claude, driven from the terminal), by angree — contact: **angree@wp.pl**. Follow-up to the same author's
-[OpenTTD 68k port](https://github.com/angree/openttd_amiga_68k), which lends this port
-its whole platform layer (c2p, Paula audio, startup code).
+**UFO: Enemy Unknown / X-COM: UFO Defense** (and *Terror from the Deep*) on the Amiga:
+[OpenXcom](https://openxcom.org), the open source engine of the PC game, ported to AmigaOS 3.
 
-AmiXcom is a native AmigaOS 3.x port of [OpenXcom](https://openxcom.org) — the open
-source reimplementation of *X-COM: UFO Defense* and *X-COM: Terror from the Deep* —
-for **real classic hardware**: 68020+ without FPU, AGA chipset. Not PiStorm-, Vampire-
-or Emu68-only. No SDL: the SDL 1.2 API the game expects is a small shim
-(`native/sdlmini/`) on top of a bare-metal Amiga graphics/audio layer.
+**This is a special port for the Amiga 500 / 1200 / 3000 / 4000 with a Warp accelerator card:
+Warp 560, Warp 1240, Warp 1260, Warp 1260 Extreme or Warp 4070.** It was ported and tested on
+these machines - an A1200 with a Warp 1260 Extreme and an A4000 with a Warp 4070, both 68060 -
+and it is tuned for them: the battle picture is kept in the card's fast graphics memory and
+scrolled by the card's blitter, so only what changed travels to the card. That fast graphics
+card is what makes the native high-resolution battles and the frame rates below possible.
+Other 68040/68060 Amigas with an RTG card run the game too, but slower graphics cards will not
+reach the same speed.
 
-## This fork: made for Amigas with a Warp card
+- the whole game: Geoscape, bases, research, interception, battles; UFO and Terror from the Deep
+- battles native at 640x400 or 640x480 (the Geoscape on a 320x200 screen); on a Warp 060 at
+  100 MHz about 50 fps standing, 33-37 fps scrolling, 28 fps while soldiers walk; the Geoscape
+  about 49 fps
+- the UFO intro plays with its sound while the game loads (about 30 s to the menu)
+- music: the PC music made from your own data by **MakeMusic**, or the music and sound effects
+  of the Amiga release of UFO
+- 28 languages (OpenXcom's translations), following the Workbench locale or chosen in the game
+- quick saving (0.14 s on the Geoscape), F10 bug reports, *Options → Amiga* with the Warp card,
+  its firmware and CPU clock
 
-This fork is a special port for the **Amiga 500, 1200, 3000 and 4000 with a Warp
-accelerator: Warp560, Warp1240, Warp1260, Warp1260 Extreme or Warp4070**. It was
-ported, measured and tested on Warp hardware - a Warp1260 in an A1200 and a Warp4070
-in an A4000. The other Warp cards are built on the same base (68040/68060 and the same
-built-in RTG graphics) and run the same software, so the game behaves the same on them.
+## Play it
 
-The speeds below are the Warp's: its fast built-in graphics card is what makes them
-possible. The battle picture stays in the card's own memory and the card's blitter
-scrolls it, so the battlescape runs natively at 640x400 / 640x480. The game also runs
-on other RTG cards and on AGA, but do not expect these numbers there.
+The release archive is on the [releases page](https://github.com/cizar-szymon/Amiga_Game_UFO/releases):
+`AmiXcom-<version>.lha`. Unpack it (e.g. into `Work:Games/`), follow `Install_en.txt`
+(Polish: `Install_pl.txt`, German: `Install_de.txt`) and double-click **UFO**. The release
+history and the full player's description are in `AmiXcom_release_en.txt` (Polish:
+`AmiXcom_release.txt`).
 
-Version numbers are `0.<commits>`: 0 = beta, official releases will be 1.xx. The current
-release, [0.100](https://github.com/cizar-szymon/Amiga_Game_UFO/releases), holds `UFO`
-(FPU) and `UFO-noFPU` (68020/030, LC060), both RTG with the size-class allocator, and
-`MakeMusic`, which converts the PC music for the game; `Install_en/_pl/_de.txt` is the
-step-by-step install, `release/AmiXcom_release_en.txt` (and `AmiXcom_release.txt`,
-Polish) the full player's description: keys, options, every change since 0.9.14.
+**Requirements:** an Amiga with a Warp card (68040 or 68060; other 68040/68060 cards with RTG
+work, slower), an RTG card with an 8-bit screen mode of 640x480 (Picasso96 / CyberGraphX),
+64 MB of Fast RAM or more, AmigaOS 3.x (tested 3.2), about 40 MB of disk for the game data and
+35 MB for the music. `UFO` uses the FPU; `UFO-noFPU` runs on a 68020/68030, LC060 or EC060.
 
-In short, measured on a Warp 060: native battles at 640x400 / 640x480 (scrolling
-20 → 37 fps, standing 26 → 50, walking ~15 → ~28), Geoscape 14 → 49 fps, a quiet 1 DAY
-2.6 → 0.3 s, saving 8.3 → 0.14 s. The UFO intro plays with its own sound while the
-game loads; music and effects can come from the Amiga release of UFO; F10 writes a bug
-report; *Options → Amiga* is translated and shows the Warp card. The biggest single
-gain was keeping the battle picture in the card's memory and scrolling it with the
-card's blitter. Builds: `AMIGA_FPU=1` and `AMIGA_FASTMALLOC=1` (see `build/build.sh`).
+**Settings:** *Options → Video* has the Warp entries "WARP RTG 320x200 / 640x400" and
+"... / 640x480"; *Options → Amiga* has music, music source, sound effects, language from
+Workbench, map reveal, split movement calculation and the FPS counter. Everything is kept in
+`user/options.cfg`.
 
-## Status: 0.9.14 — alpha
+### The game data is not included
 
-The whole game runs on the Amiga: main menu, Geoscape, bases, Battlescape, and both
-rulesets (UFO and TFTD). It has been tested for hours, not played to the end, so expect
-rough edges; every Guru is caught and logged with its PC in `oxc.log`.
+The graphics, maps, sounds and music are files of the original **X-COM / UFO for the PC**,
+copyrighted by their owners. They are not in this repository and we do not link to downloads:
+copy them from **your own copy** (CD, GOG or Steam) into `data/UFO/`:
 
-**Music** (0.9.0) comes from your own `GM.CAT`, played through a software mixer written
-for this port: sixteen voices folded into one stream, so Paula's four hardware channels
-stop being the limit. The instrument bank ships with the port (FluidR3, MIT); the music
-itself never leaves your own data. It needs about **36 MB of free disk**, because by
-default every tune is mixed to disk once at first start and simply played back after
-that. Mixing live while you play is an option too (*Options → Amiga*), but on a slow
-machine it costs a quarter of an 030/50 and breaks up whenever the game stops drawing.
+`GEODATA GEOGRAPH MAPS ROUTES SOUND TERRAIN UFOGRAPH UNITS` (+ `UFOINTRO` for the intro).
+Terror from the Deep goes into `data/TFTD/`; the Amiga release's music and sound effects
+into `data/UFO_AMIGA/` (see `Install_en.txt`).
 
-Since 0.9.14 the music can also come from your `ADLIB.CAT` instead: the game's own AdLib
-scores played through the YM3812 emulator that OpenXcom already carries, converted to
-disk the same way (also about 36 MB). Nothing extra is needed - every AdLib tune carries
-its own instruments. If there is no music, the loading screen now says why for ten
-seconds, with a line to quote in a bug report.
+### Music
 
-**AmiXcomPrefs** (0.9.14), next to the game, sets what has to be decided before the
-game starts: music (off / samples or AdLib, live or converted), mixing quality, loading
-screen, display standard, title bar, pointer and language. It can convert or delete the
-music and shows in green or red whether converted music is on disk and what it was made
-from. It edits the game's own `user/options.cfg` and leaves every other line alone.
-From a Shell: `AmiXcomPrefs SHOW`, `AmiXcomPrefs MUSIC=AdLibconverted`, `AmiXcomPrefs ?`.
+The PC music is made once from your own `GM.CAT` (or `ADLIB.CAT`) - it is not distributed
+either: on the Amiga double-click **MakeMusic** (about half a minute on a 68060 at 100 MHz, the
+AdLib music about 15 minutes), or on a PC run `tools/music/make_music.py` (see
+[`tools/music/README.md`](tools/music/README.md)) and copy the files to `user/music/`.
 
-Speed, compared to the first version that ran at all: startup about 2.7x faster,
-Geoscape ~50 fps, Battlescape idle ~35 fps on an 040/40, unit step 6 s to 0.3 s, alien
-turn 280 s to ~84 s, saving 45-60 s to ~8 s. The globe is integer fixed-point with
-precomputed shadow tables.
+## Build
 
-Earlier releases and their numbers are on the
-[releases page](https://github.com/angree/AmiXcom/releases).
+The repository never contains a modified copy of OpenXcom: the port is the pristine
+`upstream/openxcom-00fbacde.tar.gz`, the mechanical patch set `build/apply-amiga-patches.py`
+and everything Amiga-specific in `native/` (an SDL 1.2 shim, the graphics, audio and startup
+layer).
 
-Known problems and gaps - this fork, release 0.100 (2026-11-02), Warp RTG:
+- `build/build.sh` - unpacks upstream, applies the patches and builds with
+  [bebbo's amiga-gcc](https://github.com/bebbo/amiga-gcc) 6.5 (Linux / WSL / Docker);
+  `AMIGA_FPU=1` and `AMIGA_FASTMALLOC=1` give the `UFO` and `UFO-noFPU` of the release
+- the RTG build needs the CyberGraphX developer headers in `native/cgx-include/` (not
+  redistributable, not included)
+- `build/gen_music_bank.py` - the instrument bank `data/common/music.bnk` (from the FluidR3
+  soundfont); `tools/music/` - MakeMusic and `make_music.py`
+- `winuae/` - WinUAE configs and the test harness
 
-- **Fast RAM: 64 MB or more.** Smaller machines run out while loading.
-- **Loading and saving are no longer slow** on a Warp 060: the game is ready after
-  about 30 s (the UFO intro plays meanwhile), a battle save loads in about 6 s,
-  saving takes 0.14 s on the Geoscape and under half a second in a battle.
-- **Save list dates show "?????"** in 0.100 - fixed for the next release (they come
-  from the Amiga's clock; an Amiga with no set clock shows 1978-01-01).
-- **With a tank (2x2) selected** the picture under the blue part of the cursor can be
-  out of date - fixed for the next release, as are a thin strip a soldier left on the
-  map right after walking, the loading screen opening at 640x480 after a game closed
-  in a battle, and an F10 save taken while a unit was moving (loaded, the next order
-  flew the unit into the map corner and could crash the Amiga). The fixes are in
-  testing on a Warp4070.
-- **AGA** builds still compile, but this fork is made and tested for Warp RTG only.
-- **Terror from the Deep** music through `MakeMusic` (`GAME=TFTD`) has not been tried
-  with the TFTD files yet.
-- An FPS counter can be shown in the corner (*Options → Amiga*); it counts only the
-  frames that changed, so a still screen shows a low number.
-- Tested on real hardware (Warp1260, Warp4070) - reports from players with F10 bug
-  reports found most of the bugs fixed since 0.86.
+How it was done, the decisions and the measurements: [`docs/dev/`](docs/dev) (`PROGRESS.md`,
+`LEFTOFF.md`, `PORT_RESEARCH.md`; what is published: `PUBLISHING.md`).
 
-### Languages
+## Licence and thanks
 
-The port ships 27 translations besides English - Polish, German, French,
-Spanish, Italian, Dutch, Portuguese, Russian, Ukrainian, Czech, Slovak,
-Hungarian, Romanian, Bulgarian, Greek, Turkish and the Nordic ones among them.
-Pick one in *Options -> Video*, or leave *Options -> Amiga -> LANGUAGE FROM
-WORKBENCH* on and the game follows `Prefs/Locale`. Choosing by hand turns the
-automatic mode off; either way it applies at the next start.
+GPL-3.0, as OpenXcom (see `LICENSE`). OpenXcom is © the OpenXcom developers. X-COM is a
+trademark of its owners; this project only contains the engine, not the game.
 
-They are OpenXcom's own translations, pulled from Transifex by OpenXcom's daily
-workflow and shipped in its own builds - same project, same licence. The
-languages left out are the ones whose letters are not in the fonts this port
-draws with (Japanese, Korean, Chinese, Arabic, Thai, Vietnamese, Latvian,
-Serbian, Tatar, Croatian), plus three that are barely started. Refresh or
-re-pick the set with `build/fetch_translations.py` (`--list` just prints what it
-would keep and why).
-
-## Installing on the Amiga
-
-The release archive contains **no X-COM game data** — you need the original PC game
-(UFO: Enemy Unknown / X-COM: UFO Defense and/or Terror from the Deep — GOG/Steam
-copies work).
-
-1. Unpack the release archive into a directory of your choice, e.g. `Work:AmiXcom/`.
-   It contains `openxcom-aga`, `openxcom-rtg`, `openxcom-ask`, the `run` script and the
-   `data/` directory with OpenXcom's own files (`common/`, `standard/`).
-2. Copy the game data from your PC installation:
-   - UFO: the folders `GEODATA GEOGRAPH MAPS ROUTES SOUND TERRAIN UFOGRAPH UNITS`
-     into `data/UFO/`
-   - TFTD: the same set of folders (`GEODATA GEOGRAPH MAPS ROUTES SOUND TERRAIN UFOGRAPH
-     UNITS`, plus `ANIMS FLOP_INT` if present) into `data/TFTD/`
-   File and folder names must keep their case as on the PC (upper case is fine).
-3. Start it: double-click the `openxcom-aga` icon on Workbench (the icons carry the
-   1 MB stack the game needs), or from a Shell `execute run` in that directory (the
-   script sets the stack; `run-rtg` / `run-ask` for the other two binaries; the log
-   goes to `oxc.log`). Everything is relative to the program directory (`PROGDIR:`),
-   so it can live anywhere.
-4. The first start creates `user/options.cfg`. UFO is the default ruleset; to play TFTD
-   open *Options → Mods* in the game and switch from *X-COM: UFO Defense* to
-   *X-COM: Terror from the Deep*, or edit `user/options.cfg` (`xcom1` → `active: false`,
-   `xcom2` → `active: true`).
-
-Requirements: 68020 or better (no FPU needed or used), AGA, Kickstart 3.0+, lots of fast
-RAM (see above), ~40 MB of disk for the game data, plus **~36 MB for the pre-rendered
-music** (or none at all if you set *Options → Amiga → Music* to "Mixed live" or "Off").
-
-## Building
-
-The repository never contains a modified copy of OpenXcom. The port is:
-
-- `upstream/openxcom-00fbacde.tar.gz` — pristine upstream (commit `00fbacde`, 2016-06-27,
-  the last mature TFTD-capable, pre-OXCE base),
-- `build/apply-amiga-patches.py` — the mechanical, idempotent patch set,
-- `native/` — everything Amiga-specific (sdlmini SDL shim, gfx/audio/startup layer,
-  c2p, whole-file replacements in `native/oxc-replace/`),
-- `build/build.sh` — unpacks upstream, applies the patches, builds all three binaries.
-
-Toolchain: [bebbo's amiga-gcc](https://github.com/bebbo/amiga-gcc) 6.5.0b
-(`m68k-amigaos-gcc`), built at `-O1 -mcpu=68020 -msoft-float -noixemul` — the flags are
-not negotiable, each one cost real time to find (see `PROGRESS.md`). yaml-cpp 0.6.3 is
-built as one translation unit (the Hunk format has no COMDAT). The RTG build needs the
-CyberGraphX developer headers in `native/cgx-include/` (not redistributable, not
-included). Run `sh build/build.sh` inside WSL/Linux; the header comment of the script
-tells the rest.
-
-The instrument bank for the music (`data/music.bnk`, deployed to
-`data/common/music.bnk`) is generated, not stored in the repository — the same way
-`data/common/earthfix.dat` is. To rebuild it you need Frank Wen's **FluidR3_GM.sf2**
-(MIT; it is the `fluid-soundfont` source package in Debian/Ubuntu), the `sf2utils`
-Python package, and any X-COM `GM.CAT` to tell the generator which instruments the
-tunes actually use:
-
-```sh
-export AMX_SF2=/path/to/FluidR3_GM.sf2
-export AMX_GMCAT=/path/to/SOUND/GM.CAT
-python3 build/gen_music_bank.py          # writes music.bnk -> put it in data/
-```
-
-Without the bank the build still succeeds and simply plays no music.
-
-`winuae/` holds the WinUAE configs and the host-side test harness (autoinput driven
-from inside the guest, screenshots, trap-to-symbol mapping) used to develop this without
-a human at the emulator.
-
-`PORT_RESEARCH.md`, `PROGRESS.md` (facts and proofs, newest first) and `LEFTOFF.md`
-(what is open, how to run) document the work in detail.
-
-## License
-
-GPL 3.0, like OpenXcom itself — see `LICENSE`. OpenXcom is © the OpenXcom developers
-(https://openxcom.org). X-COM is a trademark of Take-Two Interactive; no game data is
-included or distributed here — including the music, which is rendered on your own
-machine from your own `GM.CAT`. The c2p routines are Mikael Kalms'; the graphics/audio
-platform layer comes from the author's OpenTTD Amiga port (MIT). The instrument samples
-in `data/common/music.bnk` come from Frank Wen's FluidR3 soundfont, MIT licensed — see
-`data/common/FluidR3_License.txt`. The "Retro" loading pictures (the default since
-0.9.14; Options → Amiga → Loading screen) are 8-bit style redraws of the port's own by
-**Banter** — thank you.
+The Amiga port is **AmiXcom by Grzegorz Korycki (angree)**,
+[github.com/angree/AmiXcom](https://github.com/angree/AmiXcom) - this repository is a fork of it
+for the Warp cards, made with Claude Code. The graphics and audio layer comes from angree's
+[OpenTTD Amiga port](https://github.com/angree/openttd_amiga_68k) (MIT), the c2p routines are
+Mikael Kalms', the instrument samples in `music.bnk` come from Frank Wen's FluidR3 soundfont
+(MIT, `data/common/FluidR3_License.txt`), and the "Retro" loading pictures are by **Banter**.

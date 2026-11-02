@@ -5,7 +5,7 @@ headerless 8-bit signed mono at 22050 Hz) and `user/music/source.txt` (what
 they were made from). They are made from the player's own `GM.CAT` (samples,
 through the port's instrument bank `data/common/music.bnk`) or `ADLIB.CAT`
 (the YM3812 emulator). Being made from the game's data, they are never in the
-repository or in a release archive (`PUBLISHING.md`).
+repository or in a release archive (`docs/dev/PUBLISHING.md`).
 
 Two ways to make them, with the game's own code:
 

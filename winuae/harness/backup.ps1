@@ -19,7 +19,7 @@ robocopy $repo "$stage\Amiga_OpenXCOM" /E /XD ".git" "work" "__pycache__" /NFL /
 Copy-Item "C:\temp\amiga_oxcom\work\user\options.cfg" "$stage\Amiga_OpenXCOM\winuae\options.cfg.tftd-reference" -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path "$stage\Amiga_OpenXCOM\bin" | Out-Null
 Copy-Item "C:\temp\amiga_oxcom\work\openxcom-aga" "$stage\Amiga_OpenXCOM\bin\openxcom-aga" -Force -ErrorAction SilentlyContinue
-"Backup: Amiga OpenXCOM, $stamp - $Label`n$Note`nSzczegoly: LEFTOFF.md, PROGRESS.md." | Set-Content "$stage\Amiga_OpenXCOM\BACKUP-INFO.txt" -Encoding UTF8
+"Backup: Amiga OpenXCOM, $stamp - $Label`n$Note`nSzczegoly: docs/dev/LEFTOFF.md, docs/dev/PROGRESS.md." | Set-Content "$stage\Amiga_OpenXCOM\BACKUP-INFO.txt" -Encoding UTF8
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [System.IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip, [System.IO.Compression.CompressionLevel]::Optimal, $false)
 Remove-Item $stage -Recurse -Force

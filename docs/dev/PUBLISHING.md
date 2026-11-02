@@ -48,8 +48,28 @@ as a pull request unless the owner asks for it.
   it to `native/amiga_buildid.h`), `1.xx` for official releases. It shows in
   the main menu and in `Version UFO`.
 - Every build given to the player gets a new number and an entry in
-  `release/AmiXcom_release.txt` / `_en.txt` (what is new and fixed, for a
-  player), with how to report a bug at the top (F10 files + release number).
+  `release/AmiXcom_release.txt` / `_en.txt` (what the game has and does, for
+  a player), with how to report a bug at the top (F10 files + release number).
+
+## What the public texts say (from 2026-11-02, all ports: PORTING_PLAN.md, phase 5)
+
+- **The README starts with the target hardware**: a special port for the
+  Amiga 500 / 1200 / 3000 / 4000 with a Warp card (Warp 560, 1240, 1260,
+  1260 Extreme, 4070), ported and tested on them; the Warp's fast graphics
+  card gives the speeds quoted. Other 68040/68060 Amigas with RTG run the
+  game, slower. Name only the machines it was really tested on (now: A1200 +
+  Warp 1260 Extreme, A4000 + Warp 4070).
+- Then, after OpenDUNE's README: what the game has (a short list), how to
+  play, requirements, settings, the game data is not included (where it
+  comes from), build, licence and thanks to angree.
+- **Public texts describe only how the game works now.** README, release
+  history and the player's texts carry no "fixed", "no longer", "before",
+  "fixed for the next release" and no before -> after numbers: give today's
+  numbers, describe a fix as present behaviour or leave it out. The history
+  of bugs and measurements stays in `docs/dev/PROGRESS.md` and
+  `docs/dev/LEFTOFF.md`.
+- Working notes live in `docs/dev/`; only `CLAUDE.md` stays in the root (that
+  is where Claude reads it).
 
 ## Licences
 

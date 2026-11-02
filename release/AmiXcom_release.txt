@@ -1,4 +1,4 @@
-AmiXcom 0.100 beta - OpenXcom (UFO: Enemy Unknown / X-COM) na klasyczną Amigę
+AmiXcom 0.100 beta - OpenXcom (UFO: Enemy Unknown / X-COM) na Amigę z kartą Warp
 ============================================================================
 
 Wydanie 0.100, 2.11.2026. "0" oznacza wersję beta; wydania oficjalne będą
@@ -28,9 +28,13 @@ PC (wersje z GOG i Steam działają).
 
 WYMAGANIA
 ---------
+- Port przeznaczony dla Amigi 500 / 1200 / 3000 / 4000 z kartą Warp (Warp 560,
+  1240, 1260, 1260 Extreme, 4070); testowany na A1200 z Warp 1260 Extreme
+  i A4000 z Warp 4070 (68060, AmigaOS 3.2). Podane niżej prędkości daje
+  szybka karta graficzna Warpa; inne Amigi z 68040/68060 i kartą RTG
+  uruchomią grę, ale wolniej.
 - Karta graficzna RTG z 8-bitowym trybem ekranu (Picasso96 / CyberGraphX).
-  Testowane na Warp1260 i Warp4070 (68060), AmigaOS 3.2.
-- 68020 lub lepszy; zalecany 68060. UFO wymaga FPU, UFO-noFPU nie.
+- UFO wymaga 68040/68060 z FPU; UFO-noFPU działa na 68020/68030, LC060.
 - Dużo Fast RAM: 64 MB lub więcej.
 - Dysk: ~43 MB po rozpakowaniu (archiwum 17 MB), ~40 MB na dane gry, ~35 MB na muzykę z PC
   (robi ją raz MakeMusic, Install_pl.txt, krok 3).
@@ -67,58 +71,41 @@ CPU (z SYS:C/WarpTool, jeśli jest).
 Options -> Video (Obraz): "WARP RTG 320x200 / 640x400" i "... / 640x480":
 Geoscape na ekranie 320x200, bitwy natywnie w 640x400 albo 640x480.
 
-ZMIANY W 0.100 (od 0.86)
------------------------
-Nowości:
+SZYBKOŚĆ (Warp 1260, 68060 100 MHz)
+-----------------------------------
+- Bitwy 640x400 / 640x480: ok. 50 kl./s w bezruchu, 33-37 kl./s przy
+  przewijaniu, 28 kl./s podczas marszu żołnierzy; duża jednostka (Sectopod,
+  Reaper, Cyberdisc, czołgi X-COM) myśli w turze obcych najwyżej ok. 2 s.
+- Geoscape: ok. 49 kl./s przy płynącym czasie; spokojny krok 1 DAY 0,3 s.
+- Zapis: 0,14 s na Geoscape, poniżej pół sekundy w bitwie; wczytanie
+  zapisu ok. 6 s; od ikony do menu ok. 30 s.
+
+HISTORIA WYDAŃ
+--------------
+0.100 (2.11.2026)
 - MakeMusic (ikona w szufladzie AmiXcom) robi muzykę z PC z Twoich plików
   X-COM: ok. pół minuty na 68060 100 MHz (muzyka AdLib ok. 15 minut), okno
-  pokazuje postęp. Sama gra NIE konwertuje już muzyki przy starcie - start
-  nie trwa minutami; bez muzyki ekran wczytywania pisze "NO MUSIC YET".
-  Na PC to samo robi tools/music/make_music.py ze źródeł. Terror from the
-  Deep: Tool Type GAME=TFTD (jeszcze niesprawdzone z plikami TFTD).
+  pokazuje postęp. Gra startuje bez robienia muzyki; bez muzyki ekran
+  wczytywania pisze "NO MUSIC YET". Na PC to samo robi
+  tools/music/make_music.py ze źródeł. Terror from the Deep: Tool Type
+  GAME=TFTD (jeszcze niesprawdzone z plikami TFTD).
 - Instalacja krok po kroku: Install_pl.txt, Install_en.txt, Install_de.txt.
-Szybkość (Warp1260, 68060 100 MHz, bitwy 640x480):
-- Koniec przewijania mapy bez szarpnięcia (przewijanie 26 -> 33 kl./s).
-- Duże jednostki (Sectopod, Reaper, Cyberdisc, czołgi X-COM) nie zamrażają
-  już tury obcych na 10-17 s (teraz najwyżej ok. 2 s).
-- Tura obcych i cywilów ok. 24% krótsza na mapie terroru (plansza "Hidden
-  Movement" nie jest już rysowana od nowa w każdej klatce).
-Poprawki:
-- Okno "Abort Mission" (przerwanie misji) nie pojawiało się na ekranie -
-  gra czekała na kliknięcie w niewidoczny przycisk (zgłoszenie F10).
-  Teraz pierwsza klatka każdego nowego okna idzie na ekran w całości.
-- Po "Convert music" w AmiXcomPrefs gra przy każdym następnym starcie
-  konwertowała muzykę i od razu się zamykała.
-Znane: przy wybranym czołgu (2x2) obraz w miejscu niebieskiej części
-kursora bywa nieaktualny.
+- Przewijanie mapy bitwy kończy się płynnie; plansza "Hidden Movement"
+  zostaje na ekranie bez ponownego rysowania, dzięki czemu tury obcych
+  i cywilów są krótkie.
+- Każde nowe okno (np. "Abort Mission") pojawia się od razu w całości.
 
-ZMIANY OD 0.9.14 (ostatniego wydania autora portu)
----------------------------------------------------
-Szybkość (pomiary na Warp1260 / Warp4070, 68060):
-- Bitwa 640x400: postój 26 -> 50 kl./s, przewijanie 14 -> 37 kl./s, marsz
-  żołnierzy ~15 -> ~28 kl./s; zatrzymanie przy każdym trafieniu kuli
-  0,65 -> 0,28 s; reakcje wrogów po kroku 25-82 ms -> poniżej 10 ms.
-- Geoscape: 14 -> 49 kl./s przy płynącym czasie; przerysowanie globu
-  150 -> 40 ms.
-- Prędkość 1 DAY: spokojny dzień 2,6 -> 0,3 s, statek w locie 5,5 -> 0,85 s.
-- Zapis: autozapis Geoscape 8,3 -> 0,14 s; wczytanie zapisu 4,9 -> 0,6 s;
-  start ~17 s krótszy (nowy przydział pamięci).
-- Kod dostrojony do 68060 (bez 64-bitowych mnożeń emulowanych w pułapkach).
-Nowości:
-- Intro UFO z oryginalnym dźwiękiem gra W TRAKCIE wczytywania gry;
-  Esc albo kliknięcie pokazuje obraz tytułowy z "LOADING nn %".
-- Natywne bitwy w 640x400 i 640x480 (pozycje WARP w Options -> Video).
-- Muzyka i efekty z amigowej wersji UFO, obok tych z PC.
-- Okienko postępu zapisu i wczytywania; F10 - zgłoszenie błędu; Help - zrzut.
-- Options -> Amiga także po polsku; Pokazuj FPS (domyślnie wyłączone).
-- Ekran bez paska tytułu; przełączenie na Workbench prawym górnym rogiem.
-Poprawki:
-- Miganie panelu walki i okien; okienka komunikatów zostające na ekranie.
-- Zawieszenia i Guru (zwolniony bufor po zmianie rozdzielczości, Ctrl-C,
-  podwójny bufor); obraz mapy niezgodny z grą w kilku sytuacjach.
-- F12 / zrzut ekranu zamykał grę; 10 s czarnego ekranu po wczytaniu; intro
-  się nie odtwarzało; ucinane dźwięki intro.
-- Brak okna konsoli na Workbenchu przy starcie z ikony.
+0.86 (24.10.2026) - pierwsze wydanie tej wersji
+- Bitwy natywnie w 640x400 i 640x480 (pozycje Warp w Options -> Video);
+  obraz bitwy jest w pamięci karty graficznej, a przewija go blitter karty.
+- Intro UFO gra z oryginalnym dźwiękiem w trakcie wczytywania gry; Esc
+  albo kliknięcie pokazuje obraz tytułowy z "LOADING nn %".
+- Muzyka i efekty dźwiękowe z amigowego wydania UFO, obok tych z PC.
+- Okno postępu zapisu/odczytu; raport błędu F10; zrzut ekranu Help.
+- Options -> Amiga także po polsku; Show FPS (domyślnie wyłączone).
+- Bez paska tytułu; ekran przełącza się na Workbench z prawego górnego rogu.
+- Program uruchomiony z ikony nie otwiera okna konsoli.
+- Kod dostrojony do 68040/68060; własny przydział pamięci.
 
 AmiXcom to port OpenXcom (GPL-3.0) autorstwa Grzegorza Koryckiego (angree),
 https://github.com/angree/AmiXcom - to wydanie jest forkiem, zrobionym

@@ -18,7 +18,7 @@ the player picks one. Screen standard is a setting (Auto/PAL/NTSC).
 On the 040/40 reference machine (no JIT, -70%): battle save ~8 s, battle load
 ~20-25 s, geoscape idle 50 fps, battle step ~0.3 s,
 `data/common/earthfix.dat` precomputed shadow tables - MUST ship in releases.
-Numbers/proofs: top of `PROGRESS.md`, newest first.
+Numbers/proofs: top of `docs/dev/PROGRESS.md`, newest first.
 
 Rules unchanged: **backup zip before every step (winuae/harness/backup.ps1),
 one change per build, test it yourself** - when alone ALWAYS on
@@ -32,8 +32,19 @@ already-patched tree; `build.sh clean` is always safe, and
 after editing the tree by hand (and is the only way to build the FPU variants
 straight after a clean build). Mod.cpp MUST stay -O0 (gcc miscompiles it at -O1:
 black palettes). Never leave `Work:autoinput.txt` behind (boot-replay incident,
-PROGRESS.md); autoinput `reboot` resets the guest from inside, so one WinUAE
-launch serves a whole test session. **Read `LEFTOFF.md` first** - it is the hand-off.
+docs/dev/PROGRESS.md); autoinput `reboot` resets the guest from inside, so one WinUAE
+launch serves a whole test session. **Read `docs/dev/LEFTOFF.md` first** - it is the hand-off.
+
+## Publishing (from 2026-11-02)
+
+What goes to GitHub and into a release: `docs/dev/PUBLISHING.md`. In short: the
+README starts with the Warp hardware (A500/1200/3000/4000 + Warp 560/1240/1260/
+1260 Extreme/4070; tested on A1200 + Warp 1260 Extreme and A4000 + Warp 4070),
+and README, release history and player texts describe only how the game works
+now - no "fixed", "no longer", "before", no before -> after numbers; the bug
+history stays in `docs/dev/`. Working notes (`LEFTOFF.md`, `PROGRESS.md`,
+`PORT_RESEARCH.md`, ...) are in `docs/dev/`. Nothing is pushed without the
+owner asking for it.
 
 ## Layout and build
 
@@ -62,7 +73,7 @@ Toolchain: bebbo amiga-gcc 6.5.0b at `/opt/amiga/bin` inside WSL (Ubuntu 22.04, 
 `ls /mnt/i/GITHUB >/dev/null 2>&1 || sudo -n mount -t drvfs I: /mnt/i`.
 
 Eight toolchain and platform defects shape this build; each one looks exactly like a bug in the game.
-They are documented with their proofs in `PROGRESS.md`:
+They are documented with their proofs in `docs/dev/PROGRESS.md`:
 
 1. **Never strip.** `m68k-amigaos-strip` produces a Hunk executable that halts the machine
    (WinUAE `HALT1`, black screen, no Guru, no output).
@@ -77,7 +88,7 @@ They are documented with their proofs in `PROGRESS.md`:
 4. **Never call `sprintf`.** It produces nonsense on this libc — wrong values, shifted
    arguments, empty `%s`. `fprintf`, `snprintf`, `vsprintf` and `vsnprintf` are all correct;
    use `snprintf`. This defect lies to you in your own diagnostics, so a log line that makes
-   no sense is a `sprintf` until proven otherwise (proof and numbers in `PROGRESS.md`).
+   no sense is a `sprintf` until proven otherwise (proof and numbers in `docs/dev/PROGRESS.md`).
 5. **`float * float` and `float / float` must never reach the ROM.** With `-msoft-float`
    libgcc has no float arithmetic; libnix's `-lm` maps it onto the AmigaOS IEEE libraries,
    and Kickstart 3.1's `mathieeesingbas.library` has broken `IEEESPMul`/`IEEESPDiv` entries
@@ -184,7 +195,7 @@ targeting *classic* hardware (020+, AGA and RTG), not PiStorm/Vampire/Emu68.
 It is the follow-up to the same author's `openttd_amiga_68k` port, and deliberately reuses that
 port's platform layer.
 
-`PORT_RESEARCH.md` is the authoritative research/plan document — read it before proposing work.
+`docs/dev/PORT_RESEARCH.md` is the authoritative research/plan document — read it before proposing work.
 Key conclusions it records (do not re-derive them):
 
 - Upstream is https://github.com/SupSuper/OpenXcom (mirror `OpenXcom/OpenXcom`). **No tagged release
