@@ -10,14 +10,25 @@ for **real classic hardware**: 68020+ without FPU, AGA chipset. Not PiStorm-, Va
 or Emu68-only. No SDL: the SDL 1.2 API the game expects is a small shim
 (`native/sdlmini/`) on top of a bare-metal Amiga graphics/audio layer.
 
-## This fork: 0.86 beta — RTG, 68040/68060 (2026-10-24)
+## This fork: made for Amigas with a Warp card
 
-A fork of the port above (branch `feat/battle-scroll-640`), aimed at RTG cards and the
-68040/68060, tested on Warp1260 and Warp4070. Version numbers are now `0.<commits>`:
-0 = beta, official releases will be 1.xx. The release archive `AmiXcom-0.86.lha` holds
-`UFO` (FPU) and `UFO-noFPU` (68020/030, LC060), both RTG with the size-class allocator;
-`release/AmiXcom_release_en.txt` (and `AmiXcom_release.txt`, Polish) is the full
-player's description: installing, keys, options, every change since 0.9.14.
+This fork is a special port for the **Amiga 500, 1200, 3000 and 4000 with a Warp
+accelerator: Warp560, Warp1240, Warp1260, Warp1260 Extreme or Warp4070**. It was
+ported, measured and tested on Warp hardware - a Warp1260 in an A1200 and a Warp4070
+in an A4000. The other Warp cards are built on the same base (68040/68060 and the same
+built-in RTG graphics) and run the same software, so the game behaves the same on them.
+
+The speeds below are the Warp's: its fast built-in graphics card is what makes them
+possible. The battle picture stays in the card's own memory and the card's blitter
+scrolls it, so the battlescape runs natively at 640x400 / 640x480. The game also runs
+on other RTG cards and on AGA, but do not expect these numbers there.
+
+Version numbers are `0.<commits>`: 0 = beta, official releases will be 1.xx. The current
+release, [0.100](https://github.com/cizar-szymon/Amiga_Game_UFO/releases), holds `UFO`
+(FPU) and `UFO-noFPU` (68020/030, LC060), both RTG with the size-class allocator, and
+`MakeMusic`, which converts the PC music for the game; `Install_en/_pl/_de.txt` is the
+step-by-step install, `release/AmiXcom_release_en.txt` (and `AmiXcom_release.txt`,
+Polish) the full player's description: keys, options, every change since 0.9.14.
 
 In short, measured on a Warp 060: native battles at 640x400 / 640x480 (scrolling
 20 → 37 fps, standing 26 → 50, walking ~15 → ~28), Geoscape 14 → 49 fps, a quiet 1 DAY
