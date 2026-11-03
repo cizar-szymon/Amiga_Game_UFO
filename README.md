@@ -4,8 +4,8 @@
 [OpenXcom](https://openxcom.org), the open source engine of the PC game, ported to AmigaOS 3.
 
 **This is a special port for the Amiga 500 / 1200 / 3000 / 4000 with a Warp accelerator card:
-Warp 560, Warp 1240, Warp 1260, Warp 1260 Extreme or Warp 4070.** It was ported and tested on
-these machines - an A1200 with a Warp 1260 Extreme and an A4000 with a Warp 4070, both 68060 -
+Warp 560, Warp 1240, Warp 1260, Warp 1260 Extreme or Warp 7060.** It was ported and tested on
+these machines - an A1200 with a Warp 1260 Extreme and an A4000 with a Warp 7060, both 68060 -
 and it is tuned for them: the battle picture is kept in the card's fast graphics memory and
 scrolled by the card's blitter, so only what changed travels to the card. That fast graphics
 card is what makes the native high-resolution battles and the frame rates below possible.
