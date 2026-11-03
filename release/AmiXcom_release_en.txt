@@ -32,8 +32,8 @@ No X-COM game data is included: you need your own copy of the PC game
 REQUIREMENTS
 ------------
 - Made for the Amiga 500 / 1200 / 3000 / 4000 with a Warp card (Warp 560,
-  1240, 1260, 1260 Extreme, 4070); tested on an A1200 with a Warp 1260
-  Extreme and an A4000 with a Warp 4070 (68060, AmigaOS 3.2). The Warp's fast
+  1240, 1260, 1260 Extreme, 7060); tested on an A1200 with a Warp 1260
+  Extreme and an A4000 with a Warp 7060 (68060, AmigaOS 3.2). The Warp's fast
   graphics card gives the speeds below; other 68040/68060 Amigas with an RTG
   card run the game, slower.
 - RTG graphics card with an 8-bit screen mode (Picasso96 / CyberGraphX).

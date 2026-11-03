@@ -83,10 +83,10 @@ as a pull request unless the owner asks for it.
 
 - **The README starts with the target hardware**: a special port for the
   Amiga 500 / 1200 / 3000 / 4000 with a Warp card (Warp 560, 1240, 1260,
-  1260 Extreme, 4070), ported and tested on them; the Warp's fast graphics
+  1260 Extreme, 7060), ported and tested on them; the Warp's fast graphics
   card gives the speeds quoted. Other 68040/68060 Amigas with RTG run the
   game, slower. Name only the machines it was really tested on (now: A1200 +
-  Warp 1260 Extreme, A4000 + Warp 4070).
+  Warp 1260 Extreme, A4000 + Warp 7060).
 - Then, after OpenDUNE's README: what the game has (a short list), how to
   play, requirements, settings, the game data is not included (where it
   comes from), build, licence and thanks to angree.

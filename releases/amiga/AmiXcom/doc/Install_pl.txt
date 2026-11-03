@@ -6,7 +6,7 @@ Co jest potrzebne
 - Amiga z 68040 albo 68060 (na 68020/68030 dzia³a, ale wolno). UFO wymaga
   FPU; UFO-noFPU nie (68020/68030, LC060/EC060).
 - Karta graficzna RTG z 8-bitowymi (256 kolorów) trybami ekranu (Picasso96
-  albo CyberGraphX). Testowane na Warp1260 i Warp4070 (68060), AmigaOS 3.2.
+  albo CyberGraphX). Testowane na Warp1260 i Warp7060 (68060), AmigaOS 3.2.
 - Fast RAM: 64 MB lub wiêcej.
 - Miejsce na dysku: ok. 45 MB na AmiXcom, ok. 40 MB na dane gry i ok. 35 MB
   na muzykê.

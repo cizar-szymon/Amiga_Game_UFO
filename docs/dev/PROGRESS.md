@@ -8,7 +8,7 @@ Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 in the commit message; the workspace keeps two PDF reports with charts
 (`raporty/AmiXcom-poprawki-RTG.pdf`, `raporty/AmiXcom-zmiany-skrot.pdf`). Measured on
 real machines through AmiAgent: Amiga 1 = A1200 / Warp1260 (060), Amiga 2 = A4000 /
-Warp4070 (060), AmigaOS 3.2, same FPGA RTG.
+Warp7060 (060), AmigaOS 3.2, same FPGA RTG.
 
 MEASURED (before -> after):
 - battle 640x400: standing 26 -> 50 fps, cursor 18 -> 29 (47 later), scrolling

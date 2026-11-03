@@ -30,8 +30,8 @@ PC (wersje z GOG i Steam działają).
 WYMAGANIA
 ---------
 - Port przeznaczony dla Amigi 500 / 1200 / 3000 / 4000 z kartą Warp (Warp 560,
-  1240, 1260, 1260 Extreme, 4070); testowany na A1200 z Warp 1260 Extreme
-  i A4000 z Warp 4070 (68060, AmigaOS 3.2). Podane niżej prędkości daje
+  1240, 1260, 1260 Extreme, 7060); testowany na A1200 z Warp 1260 Extreme
+  i A4000 z Warp 7060 (68060, AmigaOS 3.2). Podane niżej prędkości daje
   szybka karta graficzna Warpa; inne Amigi z 68040/68060 i kartą RTG
   uruchomią grę, ale wolniej.
 - Karta graficzna RTG z 8-bitowym trybem ekranu (Picasso96 / CyberGraphX).

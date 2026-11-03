@@ -39,7 +39,7 @@ launch serves a whole test session. **Read `docs/dev/LEFTOFF.md` first** - it is
 
 What goes to GitHub and into a release: `docs/dev/PUBLISHING.md`. In short: the
 README starts with the Warp hardware (A500/1200/3000/4000 + Warp 560/1240/1260/
-1260 Extreme/4070; tested on A1200 + Warp 1260 Extreme and A4000 + Warp 4070),
+1260 Extreme/7060; tested on A1200 + Warp 1260 Extreme and A4000 + Warp 7060),
 and README, release history and player texts describe only how the game works
 now - no "fixed", "no longer", "before", no before -> after numbers; the bug
 history stays in `docs/dev/`. Working notes (`LEFTOFF.md`, `PROGRESS.md`,
