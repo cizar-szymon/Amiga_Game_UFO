@@ -28,10 +28,12 @@ as a pull request unless the owner asks for it.
   be started.
 - The tree: `UFO` (FPU), `UFO-noFPU`, `MakeMusic` and their icons, `data/common`
   (with `music.bnk`, `earthfix.dat` and the FluidR3 licence - all three MUST
-  ship), `data/standard`, the install texts (`Install_en.txt`,
+  ship), `data/standard`, ONE drawer `doc/` with its drawer icon `doc.info`
+  holding all the texts: the install texts (`Install_en.txt`,
   `Install_pl.txt`, `Install_de.txt`) and the release texts with icons that
-  open MultiView, `COPYING` (GPL-3.0), the empty `data/UFO`, `data/TFTD`,
-  `data/UFO_AMIGA` and `user/music` with their README files.
+  open MultiView, `COPYING` (GPL-3.0); the empty `data/UFO`, `data/TFTD`,
+  `data/UFO_AMIGA` and `user/music` with their README files (these stay in
+  their drawers - they say what goes there).
 - The install texts say where the game data comes from (the player's own
   X-COM for the PC - GOG, Steam or the CD; the list of directories, no links)
   and how the music is made: MakeMusic on the Amiga, or
@@ -50,9 +52,23 @@ as a pull request unless the owner asks for it.
   make them.
 - The Amiga UFO's own music files (`*.mus`, `UFO.bank`), the intro files.
 - CyberGraphX headers (`native/cgx-include/`), Kickstart ROMs, `boot.hdf`.
-- The private full archive `AmiXcom-<version>-full-PRIVATE.zip`
-  (`make_release.py --full`: game data and converted music included) - only in
-  the workspace's `releases/` (outside git), for the owner's own machines.
+- The private full archive `private/AmiXcom-<version>-full.zip` (game data
+  and converted music included) - `private/` is in `.gitignore`, only on the
+  owner's PC, for his own machines.
+
+### Układ paczek (3.11.2026, standard portów Settlers i OpenDUNE)
+
+- `releases/amiga/AmiXcom/` + `releases/amiga/AmiXcom-<wersja>.zip` - publiczne, w gicie.
+- `private/AmiXcom-<wersja>-full.zip` - pełna paczka z danymi gry i muzyką, tylko na tym PC
+  (`/private/` w `.gitignore`). W `private/` tylko bieżąca; starsze skrypt przenosi do
+  `private/old/` (nic nie jest kasowane). Tam też dawne archiwa LHA 0.86 i 0.100 (publiczne
+  i pełne) i stary katalog `stage` (jako `stage-0.100`) z dawnego `UFO/releases/` workspace'u.
+- Jeden skrypt `tools/make_release.py <wersja>` workspace'u robi wszystko: drzewo publiczne,
+  publiczny ZIP i pełny ZIP (`tools/make_zip.py`, uprawnienia Unix). `--public-only` - bez
+  pełnej paczki; `--full-only` - tylko pełna paczka z istniejącego drzewa publicznego.
+  Odmawia, gdy `$VER` binarek nie jest podaną wersją, i gdy w drzewie publicznym są dane gry.
+- Wszystkie teksty w paczce w jednej szufladzie `doc/` (z ikoną `doc.info`); ReadMe w pustych
+  katalogach danych zostają na miejscu.
 
 ## Version and release notes
 

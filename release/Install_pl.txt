@@ -21,8 +21,8 @@ W Shellu (Work:Games to tylko przykład; szuflada musi istnieć):
 
   UnZip AmiXcom-0.xx.zip -d Work:Games
 
-Powstaje szuflada Work:Games/AmiXcom z grą (UFO, UFO-noFPU), MakeMusic,
-tymi opisami oraz szufladami data i user.
+Powstaje szuflada Work:Games/AmiXcom z grą (UFO, UFO-noFPU), MakeMusic
+oraz szufladami doc (te opisy), data i user.
 
 
 KROK 2 - skopiuj dane gry

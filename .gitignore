@@ -31,3 +31,6 @@ tools/music/__pycache__/
 !/releases/amiga/AmiXcom/data/TFTD/README.txt
 /releases/amiga/AmiXcom/data/UFO_AMIGA/*
 !/releases/amiga/AmiXcom/data/UFO_AMIGA/README.txt
+
+# the private full release packages (with the game data): only on the owner's PC
+/private/

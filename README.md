@@ -27,11 +27,11 @@ reach the same speed.
 
 The ready-to-unpack release is in [`releases/amiga`](releases/amiga):
 `AmiXcom-<version>.zip` (also unpacked next to it; on the Amiga:
-`UnZip AmiXcom-<version>.zip -d Work:Games`). Follow `Install_en.txt` (Polish:
-`Install_pl.txt`, German: `Install_de.txt`) and double-click **UFO**. The full player's
-description and the release history are in
-[`AmiXcom_release_en.txt`](releases/amiga/AmiXcom/AmiXcom_release_en.txt) (Polish:
-[`AmiXcom_release.txt`](releases/amiga/AmiXcom/AmiXcom_release.txt)).
+`UnZip AmiXcom-<version>.zip -d Work:Games`). All the texts are in the drawer `doc`: follow
+`doc/Install_en.txt` (Polish: `doc/Install_pl.txt`, German: `doc/Install_de.txt`) and
+double-click **UFO**. The full player's description and the release history are in
+[`doc/AmiXcom_release_en.txt`](releases/amiga/AmiXcom/doc/AmiXcom_release_en.txt) (Polish:
+[`doc/AmiXcom_release.txt`](releases/amiga/AmiXcom/doc/AmiXcom_release.txt)).
 
 **Requirements:** an Amiga with a Warp card (68040 or 68060; other 68040/68060 cards with RTG
 work, slower), an RTG card with an 8-bit screen mode of 640x480 (Picasso96 / CyberGraphX),
@@ -51,7 +51,7 @@ copy them from **your own copy** (CD, GOG or Steam) into `data/UFO/`:
 
 `GEODATA GEOGRAPH MAPS ROUTES SOUND TERRAIN UFOGRAPH UNITS` (+ `UFOINTRO` for the intro).
 Terror from the Deep goes into `data/TFTD/`; the Amiga release's music and sound effects
-into `data/UFO_AMIGA/` (see `Install_en.txt`).
+into `data/UFO_AMIGA/` (see `doc/Install_en.txt`).
 
 ### Music
 

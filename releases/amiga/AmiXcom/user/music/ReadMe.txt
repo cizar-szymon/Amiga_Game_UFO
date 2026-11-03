@@ -13,4 +13,4 @@ X-COM-Dateien in AmiXcom/data/UFO/SOUND erzeugen (das Spiel selbst tut es
 nicht). Auf einem PC: tools/music/make_music.py der AmiXcom-Quellen.
 
 Step by step / krok po kroku / Schritt fuer Schritt:
-Install_en.txt, Install_pl.txt, Install_de.txt
+doc/Install_en.txt, doc/Install_pl.txt, doc/Install_de.txt

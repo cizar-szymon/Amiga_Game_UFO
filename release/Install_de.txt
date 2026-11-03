@@ -22,7 +22,7 @@ In einer Shell (Work:Games ist nur ein Beispiel; die Schublade muss es geben):
   UnZip AmiXcom-0.xx.zip -d Work:Games
 
 Das ergibt die Schublade Work:Games/AmiXcom mit dem Spiel (UFO, UFO-noFPU),
-MakeMusic, diesen Texten und den Schubladen data und user.
+MakeMusic und den Schubladen doc (diese Texte), data und user.
 
 
 SCHRITT 2 - die Spieldaten kopieren

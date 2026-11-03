@@ -22,7 +22,7 @@ In a Shell (Work:Games is only an example; the drawer must exist):
   UnZip AmiXcom-0.xx.zip -d Work:Games
 
 This makes the drawer Work:Games/AmiXcom with the game (UFO, UFO-noFPU),
-MakeMusic, these texts and the drawers data and user.
+MakeMusic and the drawers doc (these texts), data and user.
 
 
 STEP 2 - copy the game data

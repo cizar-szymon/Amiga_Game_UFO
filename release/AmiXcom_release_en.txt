@@ -17,8 +17,10 @@ WHAT IS IN THE ARCHIVE
 ----------------------
 UFO            the game for 68040/68060 WITH an FPU (the one to use on a Warp)
 UFO-noFPU      the same game without FPU code: 68020/68030, LC060/EC060
-MakeMusic      makes the game's music from your X-COM files (Install_en.txt, step 3)
-Install_en.txt installation step by step (also _pl, _de)
+MakeMusic      makes the game's music from your X-COM files (doc/Install_en.txt, step 3)
+doc/           the texts: installation step by step (Install_en.txt, also
+               _pl, _de), this description and the release history, the
+               licence (COPYING)
 data/          OpenXcom's own data, translations, music instruments
 data/UFO/      empty - your X-COM game data goes here (see below)
 data/TFTD/     empty - Terror from the Deep data, optional

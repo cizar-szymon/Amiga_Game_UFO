@@ -16,8 +16,9 @@ CO JEST W ARCHIWUM
 ------------------
 UFO            gra dla 68040/68060 Z FPU (właściwa dla kart Warp)
 UFO-noFPU      ta sama gra bez kodu FPU: 68020/68030, LC060/EC060
-MakeMusic      robi muzykę gry z Twoich plików X-COM (Install_pl.txt, krok 3)
-Install_pl.txt instalacja krok po kroku (także _en, _de)
+MakeMusic      robi muzykę gry z Twoich plików X-COM (doc/Install_pl.txt, krok 3)
+doc/           opisy: instalacja krok po kroku (Install_pl.txt, także _en,
+               _de), ten opis i historia wydań, licencja (COPYING)
 data/          dane samego OpenXcom, tłumaczenia, instrumenty muzyki
 data/UFO/      puste - tu trafiają dane gry X-COM (niżej)
 data/TFTD/     puste - dane Terror from the Deep, opcjonalnie
